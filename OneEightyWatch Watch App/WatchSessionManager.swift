@@ -51,19 +51,30 @@ final class WatchSessionManager: NSObject {
     }
 
     private func sendCommand(_ command: String) {
-        guard let session = wcSession, session.isReachable else {
-            logger.warning("Phone not reachable — command \(command) dropped")
+        guard let session = wcSession else {
+            logger.warning("No WCSession — command \(command) dropped")
             return
         }
 
-        session.sendMessage(["command": command], replyHandler: { [weak self] reply in
-            Task { @MainActor [weak self] in
-                self?.applyState(reply)
-            }
-        }, errorHandler: { error in
-            logger.error("sendMessage failed for \(command): \(error.localizedDescription)")
-        })
-        logger.info("Sent command to phone: \(command)")
+        let payload: [String: Any] = ["command": command]
+
+        if session.isReachable {
+            // Immediate delivery — phone is active
+            session.sendMessage(payload, replyHandler: { [weak self] reply in
+                Task { @MainActor [weak self] in
+                    self?.applyState(reply)
+                }
+            }, errorHandler: { [weak session] error in
+                logger.error("sendMessage failed for \(command): \(error.localizedDescription)")
+                // Fall back to transferUserInfo for queued delivery
+                session?.transferUserInfo(payload)
+            })
+            logger.info("Sent command to phone via message: \(command)")
+        } else {
+            // Phone not reachable — queue for delivery when it wakes
+            session.transferUserInfo(payload)
+            logger.info("Queued command to phone via transferUserInfo: \(command)")
+        }
     }
 
     // MARK: - State from Phone
