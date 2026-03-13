@@ -108,6 +108,9 @@ extension PhoneSessionManager: WCSessionDelegate {
 
         logger.info("Received watch command: \(command)")
 
+        // Ensure engine is ready — handles background wake when UI hasn't appeared
+        engine.ensureReady()
+
         switch command {
         case "start":
             if !engine.isPlaying { engine.togglePlayback() }

@@ -47,6 +47,8 @@ final class MetronomeEngine {
 
     // MARK: - Setup / Teardown
 
+    private var isSetUp: Bool = false
+
     func setup() {
         logger.info("setup — initializing audio engine and state observer")
 
@@ -63,6 +65,18 @@ final class MetronomeEngine {
         setupAudioEngine()
         startObservingSharedState()
         startObservingInterruptions()
+        isSetUp = true
+    }
+
+    /// Lightweight setup for background wake — initializes audio without resetting state.
+    /// Safe to call multiple times; no-ops if already set up.
+    func ensureReady() {
+        guard !isSetUp else { return }
+        logger.info("ensureReady — background setup (preserving state)")
+        setupAudioEngine()
+        startObservingSharedState()
+        startObservingInterruptions()
+        isSetUp = true
     }
 
     func teardown() {
@@ -70,6 +84,7 @@ final class MetronomeEngine {
         stopObservingInterruptions()
         stopObservingSharedState()
         cleanupAudio()
+        isSetUp = false
     }
 
     // MARK: - Public Controls
