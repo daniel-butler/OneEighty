@@ -119,14 +119,14 @@ struct MetronomeLiveActivity: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: "metronome")
+                Image(systemName: "figure.run")
                     .font(.system(size: 16))
             } compactTrailing: {
                 Text("\(context.state.bpm)")
                     .font(.system(size: 14, weight: .semibold))
                     .contentTransition(.numericText())
             } minimal: {
-                Image(systemName: "metronome")
+                Image(systemName: "figure.run")
                     .font(.system(size: 16))
             }
             .widgetURL(URL(string: "metronome://open"))
