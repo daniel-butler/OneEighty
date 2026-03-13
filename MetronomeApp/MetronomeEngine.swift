@@ -7,6 +7,7 @@
 //
 
 import AVFoundation
+import MediaPlayer
 import os
 
 private let logger = Logger(subsystem: "com.danielbutler.MetronomeApp", category: "MetronomeEngine")
@@ -63,8 +64,10 @@ final class MetronomeEngine {
         sharedState.isPlaying = false
 
         setupAudioEngine()
+        setupRemoteCommands()
         startObservingSharedState()
         startObservingInterruptions()
+        updateNowPlaying()
         isSetUp = true
     }
 
@@ -74,8 +77,10 @@ final class MetronomeEngine {
         guard !isSetUp else { return }
         logger.info("ensureReady — background setup (preserving state)")
         setupAudioEngine()
+        setupRemoteCommands()
         startObservingSharedState()
         startObservingInterruptions()
+        updateNowPlaying()
         isSetUp = true
     }
 
@@ -100,6 +105,7 @@ final class MetronomeEngine {
         }
         sharedState.isPlaying = isPlaying
         LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
+        updateNowPlaying()
         onStateChange?()
         logger.info("togglePlayback — now isPlaying=\(self.isPlaying)")
     }
@@ -110,6 +116,7 @@ final class MetronomeEngine {
         sharedState.bpm = bpm
         handleBPMChange()
         LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
+        updateNowPlaying()
         onStateChange?()
     }
 
@@ -119,6 +126,7 @@ final class MetronomeEngine {
         sharedState.bpm = bpm
         handleBPMChange()
         LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
+        updateNowPlaying()
         onStateChange?()
     }
 
@@ -131,6 +139,7 @@ final class MetronomeEngine {
             handleBPMChange()
         }
         LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
+        updateNowPlaying()
         onStateChange?()
     }
 
@@ -296,6 +305,7 @@ final class MetronomeEngine {
                 handleBPMChange()
             }
             LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
+            updateNowPlaying()
         }
     }
 
@@ -307,6 +317,7 @@ final class MetronomeEngine {
         sharedState.isPlaying = true
         startMetronome()
         LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: true)
+        updateNowPlaying()
     }
 
     @MainActor
@@ -317,6 +328,7 @@ final class MetronomeEngine {
         sharedState.isPlaying = false
         stopMetronome()
         LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: false)
+        updateNowPlaying()
     }
 
     // MARK: - Audio Interruption Handling
@@ -350,6 +362,7 @@ final class MetronomeEngine {
             self.sharedState.isPlaying = false
             self.stopMetronome()
             LiveActivityManager.shared.updateActivity(bpm: self.bpm, isPlaying: false)
+            self.updateNowPlaying()
             self.onStateChange?()
         }
     }
@@ -365,6 +378,61 @@ final class MetronomeEngine {
             self.startMetronome()
             LiveActivityManager.shared.updateActivity(bpm: self.bpm, isPlaying: true)
             self.onStateChange?()
+            self.updateNowPlaying()
         }
+    }
+
+    // MARK: - Now Playing
+
+    private func setupRemoteCommands() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isPlaying else { return }
+                self.togglePlayback()
+            }
+            return .success
+        }
+
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isPlaying else { return }
+                self.togglePlayback()
+            }
+            return .success
+        }
+
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.togglePlayback()
+            }
+            return .success
+        }
+
+        // Repurpose next/previous track for BPM +/-
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.incrementBPM()
+            }
+            return .success
+        }
+
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.decrementBPM()
+            }
+            return .success
+        }
+    }
+
+    private func updateNowPlaying() {
+        let infoCenter = MPNowPlayingInfoCenter.default()
+        infoCenter.nowPlayingInfo = [
+            MPMediaItemPropertyTitle: "\(bpm) SPM",
+            MPMediaItemPropertyArtist: isPlaying ? "Playing" : "Stopped",
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+        ]
+        infoCenter.playbackState = isPlaying ? .playing : .paused
     }
 }
