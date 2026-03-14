@@ -15,7 +15,7 @@ final class NowPlayingTests: XCTestCase {
     private var engine: MetronomeEngine!
 
     override func setUp() {
-        engine = MetronomeEngine()
+        engine = MetronomeEngine(store: InMemoryStateStore())
         engine.setup()
     }
 

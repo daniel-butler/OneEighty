@@ -15,7 +15,7 @@ final class MetronomeEngineTests: XCTestCase {
     private var engine: MetronomeEngine!
 
     override func setUp() {
-        engine = MetronomeEngine()
+        engine = MetronomeEngine(store: InMemoryStateStore())
     }
 
     override func tearDown() {
@@ -26,24 +26,27 @@ final class MetronomeEngineTests: XCTestCase {
     // MARK: - BPM Persistence (Bug 3 fix)
 
     func testSetupRestoresBPMFromSharedState() {
-        // Set BPM to non-default, tear down, then setup a new engine
-        engine.setup()
-        engine.setBPM(210)
-        engine.teardown()
+        let store = InMemoryStateStore()
+        let engine1 = MetronomeEngine(store: store)
+        engine1.setup()
+        engine1.setBPM(210)
+        engine1.teardown()
 
-        let engine2 = MetronomeEngine()
+        let engine2 = MetronomeEngine(store: store)
         engine2.setup()
-        XCTAssertEqual(engine2.bpm, 210, "setup() should restore BPM from SharedPlaybackState, not reset to 180")
+        XCTAssertEqual(engine2.bpm, 210, "setup() should restore BPM from store")
         engine2.teardown()
     }
 
     func testSetupResetsIsPlayingToFalse() {
-        engine.setup()
-        engine.togglePlayback()
-        XCTAssertTrue(engine.isPlaying)
-        engine.teardown()
+        let store = InMemoryStateStore()
+        let engine1 = MetronomeEngine(store: store)
+        engine1.setup()
+        engine1.togglePlayback()
+        XCTAssertTrue(engine1.isPlaying)
+        engine1.teardown()
 
-        let engine2 = MetronomeEngine()
+        let engine2 = MetronomeEngine(store: store)
         engine2.setup()
         XCTAssertFalse(engine2.isPlaying, "setup() should always start with isPlaying = false")
         engine2.teardown()
