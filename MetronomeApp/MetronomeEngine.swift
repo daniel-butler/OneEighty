@@ -192,6 +192,7 @@ final class MetronomeEngine {
             if isPlaying {
                 handleBPMChange()
             }
+            notifyStateChanged()
         }
     }
 
