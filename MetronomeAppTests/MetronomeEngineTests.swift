@@ -249,4 +249,43 @@ final class MetronomeEngineTests: XCTestCase {
         XCTAssertEqual(injectedEngine.bpm, 200)
         injectedEngine.teardown()
     }
+
+    // MARK: - External Changes
+
+    func testExternalStateChangeUpdatesBPM() {
+        let store = InMemoryStateStore()
+        let injectedEngine = MetronomeEngine(store: store)
+        injectedEngine.setup()
+
+        store.bpm = 210
+        store.simulateExternalChange(.stateChanged)
+
+        XCTAssertEqual(injectedEngine.bpm, 210)
+        injectedEngine.teardown()
+    }
+
+    func testExternalStartCommandStartsPlayback() {
+        let store = InMemoryStateStore()
+        let injectedEngine = MetronomeEngine(store: store)
+        injectedEngine.setup()
+        XCTAssertFalse(injectedEngine.isPlaying)
+
+        store.simulateExternalChange(.command(.start))
+
+        XCTAssertTrue(injectedEngine.isPlaying)
+        injectedEngine.teardown()
+    }
+
+    func testExternalStopCommandStopsPlayback() {
+        let store = InMemoryStateStore()
+        let injectedEngine = MetronomeEngine(store: store)
+        injectedEngine.setup()
+        injectedEngine.togglePlayback()
+        XCTAssertTrue(injectedEngine.isPlaying)
+
+        store.simulateExternalChange(.command(.stop))
+
+        XCTAssertFalse(injectedEngine.isPlaying)
+        injectedEngine.teardown()
+    }
 }

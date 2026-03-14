@@ -47,7 +47,6 @@ final class MetronomeEngine {
     // MARK: - Cross-Process
 
     @ObservationIgnored private let store: StateStore
-    private var stateObserver: StateChangeObserver?
 
     init(store: StateStore = SharedStateStore.shared) {
         self.store = store
@@ -104,9 +103,9 @@ final class MetronomeEngine {
 
         setupAudioEngine()
         setupRemoteCommands()
-        startObservingSharedState()
         startObservingInterruptions()
         setupSubscriptions()
+        startObservingSharedState()
         notifyStateChanged()
         isSetUp = true
     }
@@ -118,9 +117,9 @@ final class MetronomeEngine {
         logger.info("ensureReady — background setup (preserving state)")
         setupAudioEngine()
         setupRemoteCommands()
-        startObservingSharedState()
         startObservingInterruptions()
         setupSubscriptions()
+        startObservingSharedState()
         notifyStateChanged()
         isSetUp = true
     }
@@ -332,22 +331,27 @@ final class MetronomeEngine {
     // MARK: - Shared State Observer
 
     private func startObservingSharedState() {
-        stateObserver = StateChangeObserver()
-        stateObserver?.startObserving(
-            onStateChanged: { [weak self] in self?.handleSharedStateChange() },
-            onPlayCommand: { [weak self] in self?.handlePlayCommand() },
-            onStopCommand: { [weak self] in self?.handleStopCommand() }
-        )
+        store.externalChanges
+            .sink { [weak self] event in
+                guard let self else { return }
+                switch event {
+                case .stateChanged:
+                    self.handleSharedStateChange()
+                case .command(.start):
+                    self.handlePlayCommand()
+                case .command(.stop):
+                    self.handleStopCommand()
+                }
+            }
+            .store(in: &subscriptions)
     }
 
     private func stopObservingSharedState() {
-        stateObserver?.stopObserving()
-        stateObserver = nil
+        // Subscriptions cancelled via subscriptions.removeAll() in teardown()
     }
 
     @MainActor
     private func handleSharedStateChange() {
-        store.synchronize()
         let newBPM = store.bpm
         logger.info("handleSharedStateChange — shared bpm=\(newBPM), local bpm=\(self.bpm)")
 
