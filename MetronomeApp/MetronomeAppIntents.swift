@@ -46,17 +46,16 @@ struct ToggleMetronomeIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let sharedState = SharedMetronomeState.shared
-        let wasPlaying = sharedState.isPlaying
+        let store = SharedStateStore.shared
+        let wasPlaying = store.isPlaying
         let nowPlaying = !wasPlaying
         logger.info("ToggleMetronomeIntent — wasPlaying=\(wasPlaying), nowPlaying=\(nowPlaying)")
 
-        sharedState.isPlaying = nowPlaying
-        let bpm = sharedState.bpm
+        store.isPlaying = nowPlaying
+        let bpm = store.bpm
         await pushActivityUpdate(bpm: bpm, isPlaying: nowPlaying, intent: "ToggleMetronome")
 
-        let command = nowPlaying ? MetronomeNotification.commandStart : MetronomeNotification.commandStop
-        SharedMetronomeState.postCommand(command)
+        store.postCommand(nowPlaying ? .start : .stop)
         return .result()
     }
 }
@@ -68,11 +67,11 @@ struct StartMetronomeIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StartMetronomeIntent.perform()")
-        let sharedState = SharedMetronomeState.shared
-        sharedState.isPlaying = true
-        let bpm = sharedState.bpm
+        let store = SharedStateStore.shared
+        store.isPlaying = true
+        let bpm = store.bpm
         await pushActivityUpdate(bpm: bpm, isPlaying: true, intent: "StartMetronome")
-        SharedMetronomeState.postCommand(MetronomeNotification.commandStart)
+        store.postCommand(.start)
         return .result()
     }
 }
@@ -84,11 +83,11 @@ struct StopMetronomeIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StopMetronomeIntent.perform()")
-        let sharedState = SharedMetronomeState.shared
-        sharedState.isPlaying = false
-        let bpm = sharedState.bpm
+        let store = SharedStateStore.shared
+        store.isPlaying = false
+        let bpm = store.bpm
         await pushActivityUpdate(bpm: bpm, isPlaying: false, intent: "StopMetronome")
-        SharedMetronomeState.postCommand(MetronomeNotification.commandStop)
+        store.postCommand(.stop)
         return .result()
     }
 }
@@ -99,13 +98,13 @@ struct IncrementBPMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let sharedState = SharedMetronomeState.shared
-        let currentBPM = sharedState.bpm
+        let store = SharedStateStore.shared
+        let currentBPM = store.bpm
         logger.info("IncrementBPMIntent — current=\(currentBPM)")
         if currentBPM < 230 {
             let newBPM = currentBPM + 1
-            sharedState.bpm = newBPM
-            let isPlaying = sharedState.isPlaying
+            store.bpm = newBPM
+            let isPlaying = store.isPlaying
             await pushActivityUpdate(bpm: newBPM, isPlaying: isPlaying, intent: "IncrementBPM")
         }
         return .result()
@@ -118,13 +117,13 @@ struct DecrementBPMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let sharedState = SharedMetronomeState.shared
-        let currentBPM = sharedState.bpm
+        let store = SharedStateStore.shared
+        let currentBPM = store.bpm
         logger.info("DecrementBPMIntent — current=\(currentBPM)")
         if currentBPM > 150 {
             let newBPM = currentBPM - 1
-            sharedState.bpm = newBPM
-            let isPlaying = sharedState.isPlaying
+            store.bpm = newBPM
+            let isPlaying = store.isPlaying
             await pushActivityUpdate(bpm: newBPM, isPlaying: isPlaying, intent: "DecrementBPM")
         }
         return .result()

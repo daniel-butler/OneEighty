@@ -118,6 +118,8 @@
 				MetronomeActivityAttributes.swift,
 				MetronomeApp/SharedMetronomeState.swift,
 				MetronomeAppIntents.swift,
+				SharedStateStore.swift,
+				StateStore.swift,
 			);
 			target = 6FCE596B2EFB75690083AC60 /* MetronomeWidgetExtension */;
 		};
