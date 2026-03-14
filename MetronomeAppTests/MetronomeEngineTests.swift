@@ -219,4 +219,23 @@ final class MetronomeEngineTests: XCTestCase {
         XCTAssertTrue(engine.isPlaying, "ensureReady should not reset isPlaying")
         XCTAssertEqual(engine.bpm, 200, "ensureReady should not reset BPM")
     }
+
+    // MARK: - InMemoryStateStore
+
+    func testInMemoryStateStoreDefaults() {
+        let store = InMemoryStateStore()
+        XCTAssertEqual(store.bpm, 180)
+        XCTAssertFalse(store.isPlaying)
+        XCTAssertEqual(store.volume, 0.4)
+    }
+
+    func testInMemoryStateStoreRoundTrips() {
+        let store = InMemoryStateStore()
+        store.bpm = 200
+        store.isPlaying = true
+        store.volume = 0.8
+        XCTAssertEqual(store.bpm, 200)
+        XCTAssertTrue(store.isPlaying)
+        XCTAssertEqual(store.volume, 0.8)
+    }
 }
