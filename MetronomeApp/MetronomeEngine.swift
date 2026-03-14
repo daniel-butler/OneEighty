@@ -61,8 +61,20 @@ final class MetronomeEngine {
         stateSubject.eraseToAnyPublisher()
     }
 
+    private var subscriptions = Set<AnyCancellable>()
+
     private func notifyStateChanged() {
         stateSubject.send(MetronomeState(bpm: bpm, isPlaying: isPlaying))
+    }
+
+    private func setupSubscriptions() {
+        subscriptions.removeAll()
+        statePublisher
+            .removeDuplicates()
+            .sink { state in
+                LiveActivityManager.shared.updateActivity(bpm: state.bpm, isPlaying: state.isPlaying)
+            }
+            .store(in: &subscriptions)
     }
 
     // MARK: - Setup / Teardown
@@ -88,6 +100,7 @@ final class MetronomeEngine {
         setupRemoteCommands()
         startObservingSharedState()
         startObservingInterruptions()
+        setupSubscriptions()
         notifyStateChanged()
         updateNowPlaying()
         isSetUp = true
@@ -108,6 +121,7 @@ final class MetronomeEngine {
 
     func teardown() {
         logger.info("teardown — cleaning up audio and observer")
+        subscriptions.removeAll()
         stopObservingInterruptions()
         stopObservingSharedState()
         cleanupAudio()
@@ -126,7 +140,6 @@ final class MetronomeEngine {
             startMetronome()
         }
         sharedState.isPlaying = isPlaying
-        LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
         updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
@@ -138,7 +151,6 @@ final class MetronomeEngine {
         bpm += 1
         sharedState.bpm = bpm
         handleBPMChange()
-        LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
         updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
@@ -149,7 +161,6 @@ final class MetronomeEngine {
         bpm -= 1
         sharedState.bpm = bpm
         handleBPMChange()
-        LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
         updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
@@ -163,7 +174,6 @@ final class MetronomeEngine {
         if isPlaying {
             handleBPMChange()
         }
-        LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
         updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
@@ -341,7 +351,6 @@ final class MetronomeEngine {
             if isPlaying {
                 handleBPMChange()
             }
-            LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: isPlaying)
             updateNowPlaying()
             notifyStateChanged()
         }
@@ -354,7 +363,6 @@ final class MetronomeEngine {
         isPlaying = true
         sharedState.isPlaying = true
         startMetronome()
-        LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: true)
         updateNowPlaying()
         notifyStateChanged()
     }
@@ -366,7 +374,6 @@ final class MetronomeEngine {
         isPlaying = false
         sharedState.isPlaying = false
         stopMetronome()
-        LiveActivityManager.shared.updateActivity(bpm: bpm, isPlaying: false)
         updateNowPlaying()
         notifyStateChanged()
     }
@@ -401,7 +408,6 @@ final class MetronomeEngine {
             self.isPlaying = false
             self.sharedState.isPlaying = false
             self.stopMetronome()
-            LiveActivityManager.shared.updateActivity(bpm: self.bpm, isPlaying: false)
             self.updateNowPlaying()
             self.onStateChange?()
             self.notifyStateChanged()
@@ -417,7 +423,6 @@ final class MetronomeEngine {
             self.isPlaying = true
             self.sharedState.isPlaying = true
             self.startMetronome()
-            LiveActivityManager.shared.updateActivity(bpm: self.bpm, isPlaying: true)
             self.onStateChange?()
             self.notifyStateChanged()
             self.updateNowPlaying()
