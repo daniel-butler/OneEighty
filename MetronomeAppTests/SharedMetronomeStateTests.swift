@@ -1,83 +1,112 @@
 //
-//  SharedMetronomeStateTests.swift
+//  SharedStateStoreTests.swift
 //  MetronomeAppTests
 //
+//  Tests for SharedStateStore persistence and Darwin notification delivery.
+//
 
+import Combine
 import XCTest
 @testable import MetronomeApp
 
-final class SharedMetronomeStateTests: XCTestCase {
+@MainActor
+final class SharedStateStoreTests: XCTestCase {
 
-    private var suiteName: String!
+    private var store: SharedStateStore!
     private var testDefaults: UserDefaults!
-    private var state: SharedMetronomeState!
+    private var testSuiteName: String!
 
     override func setUp() {
-        super.setUp()
-        suiteName = "test.metronome.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
-        state = SharedMetronomeState(userDefaults: testDefaults)
+        testSuiteName = "test.SharedStateStore.\(UUID().uuidString)"
+        testDefaults = UserDefaults(suiteName: testSuiteName)!
+        store = SharedStateStore(userDefaults: testDefaults)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
-        super.tearDown()
+        store = nil
+        UserDefaults.standard.removePersistentDomain(forName: testSuiteName)
+        testDefaults = nil
+        testSuiteName = nil
     }
 
-    // MARK: - BPM (preference — should persist)
+    // MARK: - Defaults
 
     func testBPMDefaultsTo180() {
-        XCTAssertEqual(state.bpm, 180)
+        XCTAssertEqual(store.bpm, 180)
     }
-
-    func testBPMPersistsValue() {
-        state.bpm = 195
-        XCTAssertEqual(state.bpm, 195)
-    }
-
-    func testBPMRoundTripsViaUserDefaults() {
-        state.bpm = 170
-        let value = testDefaults.integer(forKey: "bpm")
-        XCTAssertEqual(value, 170, "BPM should be stored in UserDefaults")
-    }
-
-    // MARK: - Volume (preference — should persist)
-
-    func testVolumeDefaultsTo04() {
-        XCTAssertEqual(state.volume, 0.4, accuracy: 0.001)
-    }
-
-    func testVolumePersistsValue() {
-        state.volume = 0.8
-        XCTAssertEqual(state.volume, 0.8, accuracy: 0.001)
-    }
-
-    // MARK: - isPlaying (cross-process state — must be shared)
 
     func testIsPlayingDefaultsToFalse() {
-        XCTAssertFalse(state.isPlaying)
+        XCTAssertFalse(store.isPlaying)
     }
 
-    func testIsPlayingPersistsValue() {
-        state.isPlaying = true
-        XCTAssertTrue(state.isPlaying)
+    func testVolumeDefaultsTo04() {
+        XCTAssertEqual(store.volume, 0.4)
     }
 
-    func testIsPlayingRoundTripsViaUserDefaults() {
-        state.isPlaying = true
-        let value = testDefaults.bool(forKey: "isPlaying")
-        XCTAssertTrue(value, "isPlaying must be in UserDefaults so widget intents can read it cross-process")
+    // MARK: - Persistence
+
+    func testBPMPersists() {
+        store.bpm = 200
+        let store2 = SharedStateStore(userDefaults: testDefaults)
+        store2.synchronize()
+        XCTAssertEqual(store2.bpm, 200)
     }
 
-    func testIsPlayingSurvivesCrossProcessRead() {
-        // Simulates the widget extension reading isPlaying after the main app set it.
-        // This is the fix for the bug where IncrementBPMIntent read isPlaying from
-        // Activity.activities (stale, defaults to false) and overwrote the correct state.
-        state.isPlaying = true
+    func testIsPlayingPersists() {
+        store.isPlaying = true
+        let store2 = SharedStateStore(userDefaults: testDefaults)
+        store2.synchronize()
+        XCTAssertTrue(store2.isPlaying)
+    }
 
-        // Read directly from UserDefaults (as another process would)
-        testDefaults.synchronize()
-        XCTAssertTrue(testDefaults.bool(forKey: "isPlaying"),
-                      "isPlaying must be readable from another process via shared UserDefaults")
+    func testVolumePersists() {
+        store.volume = 0.8
+        let store2 = SharedStateStore(userDefaults: testDefaults)
+        store2.synchronize()
+        XCTAssertEqual(store2.volume, 0.8)
+    }
+
+    // MARK: - Command Round-Trip
+
+    func testPostCommandStartEmitsOnExternalChanges() {
+        var events: [StoreEvent] = []
+        let cancellable = store.externalChanges.sink { events.append($0) }
+
+        store.postCommand(.start)
+
+        let expectation = expectation(description: "command delivered")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        let commandEvents = events.compactMap { event -> StateStoreCommand? in
+            if case .command(let cmd) = event { return cmd }
+            return nil
+        }
+        XCTAssertTrue(commandEvents.contains(.start))
+
+        cancellable.cancel()
+    }
+
+    func testPostCommandStopEmitsOnExternalChanges() {
+        var events: [StoreEvent] = []
+        let cancellable = store.externalChanges.sink { events.append($0) }
+
+        store.postCommand(.stop)
+
+        let expectation = expectation(description: "command delivered")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        let commandEvents = events.compactMap { event -> StateStoreCommand? in
+            if case .command(let cmd) = event { return cmd }
+            return nil
+        }
+        XCTAssertTrue(commandEvents.contains(.stop))
+
+        cancellable.cancel()
     }
 }
