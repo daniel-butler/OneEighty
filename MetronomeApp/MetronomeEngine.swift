@@ -75,6 +75,11 @@ final class MetronomeEngine {
                 LiveActivityManager.shared.updateActivity(bpm: state.bpm, isPlaying: state.isPlaying)
             }
             .store(in: &subscriptions)
+        statePublisher
+            .sink { [weak self] _ in
+                self?.updateNowPlaying()
+            }
+            .store(in: &subscriptions)
     }
 
     // MARK: - Setup / Teardown
@@ -102,7 +107,6 @@ final class MetronomeEngine {
         startObservingInterruptions()
         setupSubscriptions()
         notifyStateChanged()
-        updateNowPlaying()
         isSetUp = true
     }
 
@@ -115,7 +119,8 @@ final class MetronomeEngine {
         setupRemoteCommands()
         startObservingSharedState()
         startObservingInterruptions()
-        updateNowPlaying()
+        setupSubscriptions()
+        notifyStateChanged()
         isSetUp = true
     }
 
@@ -140,7 +145,6 @@ final class MetronomeEngine {
             startMetronome()
         }
         sharedState.isPlaying = isPlaying
-        updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
         logger.info("togglePlayback — now isPlaying=\(self.isPlaying)")
@@ -151,7 +155,6 @@ final class MetronomeEngine {
         bpm += 1
         sharedState.bpm = bpm
         handleBPMChange()
-        updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
     }
@@ -161,7 +164,6 @@ final class MetronomeEngine {
         bpm -= 1
         sharedState.bpm = bpm
         handleBPMChange()
-        updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
     }
@@ -174,7 +176,6 @@ final class MetronomeEngine {
         if isPlaying {
             handleBPMChange()
         }
-        updateNowPlaying()
         onStateChange?()
         notifyStateChanged()
     }
@@ -351,7 +352,6 @@ final class MetronomeEngine {
             if isPlaying {
                 handleBPMChange()
             }
-            updateNowPlaying()
             notifyStateChanged()
         }
     }
@@ -363,7 +363,6 @@ final class MetronomeEngine {
         isPlaying = true
         sharedState.isPlaying = true
         startMetronome()
-        updateNowPlaying()
         notifyStateChanged()
     }
 
@@ -374,7 +373,6 @@ final class MetronomeEngine {
         isPlaying = false
         sharedState.isPlaying = false
         stopMetronome()
-        updateNowPlaying()
         notifyStateChanged()
     }
 
@@ -408,7 +406,6 @@ final class MetronomeEngine {
             self.isPlaying = false
             self.sharedState.isPlaying = false
             self.stopMetronome()
-            self.updateNowPlaying()
             self.onStateChange?()
             self.notifyStateChanged()
         }
@@ -425,7 +422,6 @@ final class MetronomeEngine {
             self.startMetronome()
             self.onStateChange?()
             self.notifyStateChanged()
-            self.updateNowPlaying()
         }
     }
 

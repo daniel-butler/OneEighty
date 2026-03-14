@@ -107,6 +107,7 @@ final class MetronomeEngineTests: XCTestCase {
 
     func testOnStateChangeCalledOnBPMChange() {
         engine.setup()
+        engine.setBPM(180)
         var callCount = 0
         engine.onStateChange = { callCount += 1 }
 
