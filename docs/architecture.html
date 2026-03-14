@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>180 Metronome - Architecture Explorer</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+    --purple: #bc8cff;
+    --pink: #f778ba;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 22px; font-weight: 600; margin: 32px 0 16px; color: var(--accent); }
+  h3 { font-size: 17px; font-weight: 600; margin: 20px 0 10px; }
+  p { margin-bottom: 12px; color: var(--text-muted); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: 'SF Mono', 'Menlo', monospace; font-size: 13px; background: var(--surface); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
+
+  /* Navigation */
+  nav { position: sticky; top: 0; background: var(--bg); border-bottom: 1px solid var(--border); padding: 12px 0; z-index: 100; margin-bottom: 24px; }
+  nav .container { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 24px; }
+  nav a { color: var(--text-muted); font-size: 14px; font-weight: 500; padding: 4px 12px; border-radius: 6px; transition: all 0.15s; }
+  nav a:hover, nav a.active { color: var(--text); background: var(--surface); text-decoration: none; }
+
+  /* Architecture Diagram */
+  .arch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .arch-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s; position: relative; }
+  .arch-box:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .arch-box.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .arch-box h3 { margin: 0 0 6px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .arch-box .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+  .tag-ios { background: #1f3a5f; color: var(--accent); }
+  .tag-watch { background: #2d1f3f; color: var(--purple); }
+  .tag-widget { background: #3f2d1f; color: var(--orange); }
+  .tag-shared { background: #1f3f2d; color: var(--green); }
+  .arch-box p { font-size: 13px; margin: 0; }
+  .arch-box .file-link { font-size: 12px; color: var(--text-muted); margin-top: 8px; display: block; font-family: 'SF Mono', monospace; }
+  .arch-full { grid-column: 1 / -1; }
+
+  /* Detail Panel */
+  .detail-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 16px 0; display: none; }
+  .detail-panel.visible { display: block; animation: fadeIn 0.2s; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .detail-panel h3 { color: var(--accent); margin: 0 0 12px; }
+  .detail-panel .methods { display: grid; gap: 8px; }
+  .method { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  .method-name { font-family: 'SF Mono', monospace; font-size: 13px; font-weight: 600; color: var(--green); }
+  .method-line { font-size: 12px; color: var(--text-muted); float: right; }
+  .method-desc { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Flow Diagrams */
+  .flow-tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+  .flow-tab { padding: 8px 16px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; }
+  .flow-tab:hover { color: var(--text); border-color: var(--text-muted); }
+  .flow-tab.active { color: var(--accent); border-color: var(--accent); background: #1f3a5f; }
+  .flow-content { display: none; }
+  .flow-content.active { display: block; }
+
+  .flow-steps { position: relative; padding-left: 32px; }
+  .flow-step { position: relative; padding: 12px 16px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .flow-step::before { content: attr(data-num); position: absolute; left: -32px; top: 14px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--bg); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .flow-step::after { content: ''; position: absolute; left: -21px; top: 38px; width: 2px; height: calc(100% - 10px); background: var(--border); }
+  .flow-step:last-child::after { display: none; }
+  .flow-step .component { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .flow-step .component.c-engine { color: var(--accent); }
+  .flow-step .component.c-phone { color: var(--green); }
+  .flow-step .component.c-watch { color: var(--purple); }
+  .flow-step .component.c-widget { color: var(--orange); }
+  .flow-step .component.c-shared { color: var(--pink); }
+  .flow-step .component.c-system { color: var(--text-muted); }
+  .flow-step .action { font-size: 14px; color: var(--text); }
+  .flow-step .code-ref { font-size: 12px; font-family: 'SF Mono', monospace; color: var(--text-muted); margin-top: 4px; }
+  .flow-step .note { font-size: 12px; color: var(--orange); margin-top: 4px; font-style: italic; }
+
+  /* Edge Cases */
+  .edge-case { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+  .edge-header { padding: 16px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .edge-header:hover { background: rgba(255,255,255,0.02); }
+  .edge-header h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .edge-header .severity { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .severity-handled { background: #1f3f2d; color: var(--green); }
+  .severity-limitation { background: #3f2d1f; color: var(--orange); }
+  .severity-bug { background: #3f1f1f; color: var(--red); }
+  .edge-header .chevron { transition: transform 0.2s; color: var(--text-muted); }
+  .edge-header.open .chevron { transform: rotate(90deg); }
+  .edge-body { display: none; padding: 0 20px 16px; }
+  .edge-body.open { display: block; }
+  .edge-body p { font-size: 14px; }
+  .edge-body .flow-steps { margin-top: 12px; }
+
+  /* Legend */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 16px; background: var(--surface); border-radius: 8px; margin-bottom: 20px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  .subtitle { color: var(--text-muted); font-size: 15px; margin-bottom: 24px; }
+  .section-note { background: rgba(88, 166, 255, 0.08); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  .section-note strong { color: var(--accent); }
+
+  .arrow-label { display: block; text-align: center; color: var(--text-muted); font-size: 12px; padding: 4px 0; font-family: 'SF Mono', monospace; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="#architecture" class="active">Architecture</a>
+    <a href="#happy-paths">Happy Paths</a>
+    <a href="#edge-cases">Edge Cases</a>
+    <a href="#state">State Machine</a>
+    <a href="#docs">Docs &amp; Links</a>
+  </div>
+</nav>
+
+<div class="container">
+
+<h1>180 Metronome</h1>
+<p class="subtitle">Interactive architecture explorer. Click components to see details. Click flows to step through them.</p>
+
+<!-- ==================== ARCHITECTURE ==================== -->
+<section id="architecture">
+<h2>Component Architecture</h2>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> iOS App</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> watchOS App</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Widget Extension</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Shared (cross-process)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--text-muted)"></div> System Service</div>
+</div>
+
+<h3 style="margin-bottom:12px">Deployment</h3>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:28px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+<svg viewBox="0 0 920 470" style="min-width:680px;width:100%;font-family:-apple-system,system-ui,sans-serif;" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#58a6ff"/></marker>
+    <marker id="a-green" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3fb950"/></marker>
+    <marker id="a-purple" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#bc8cff"/></marker>
+    <marker id="a-gray" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8b949e"/></marker>
+  </defs>
+
+  <!-- ======= iPhone ======= -->
+  <rect x="10" y="8" width="540" height="454" rx="18" fill="none" stroke="#30363d" stroke-width="2"/>
+  <text x="280" y="32" text-anchor="middle" fill="#8b949e" font-size="14" font-weight="700" letter-spacing="0.5">iPhone</text>
+
+  <!-- App Process -->
+  <rect x="24" y="44" width="512" height="230" rx="10" fill="rgba(88,166,255,0.04)" stroke="#58a6ff" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="280" y="62" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">APP PROCESS</text>
+
+  <rect x="38" y="74" width="120" height="30" rx="6" fill="#161b22" stroke="#58a6ff" stroke-width="1"/>
+  <text x="98" y="94" text-anchor="middle" fill="#e6edf3" font-size="11">ContentView</text>
+
+  <rect x="38" y="118" width="220" height="42" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
+  <text x="148" y="144" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="700">MetronomeEngine</text>
+
+  <rect x="38" y="176" width="132" height="28" rx="6" fill="#161b22" stroke="#58a6ff" stroke-width="1"/>
+  <text x="104" y="194" text-anchor="middle" fill="#e6edf3" font-size="10">AudioSessionMgr</text>
+
+  <rect x="182" y="176" width="132" height="28" rx="6" fill="#161b22" stroke="#58a6ff" stroke-width="1"/>
+  <text x="248" y="194" text-anchor="middle" fill="#e6edf3" font-size="10">LiveActivityMgr</text>
+
+  <rect x="345" y="118" width="175" height="36" rx="6" fill="#161b22" stroke="#58a6ff" stroke-width="1"/>
+  <text x="432" y="140" text-anchor="middle" fill="#e6edf3" font-size="11">PhoneSessionMgr</text>
+
+  <rect x="345" y="176" width="175" height="28" rx="6" fill="#161b22" stroke="#8b949e" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="432" y="194" text-anchor="middle" fill="#8b949e" font-size="10">MPNowPlayingInfoCenter</text>
+
+  <rect x="38" y="218" width="132" height="28" rx="6" fill="#161b22" stroke="#58a6ff" stroke-width="1"/>
+  <text x="104" y="236" text-anchor="middle" fill="#e6edf3" font-size="10">StateChangeObserver</text>
+
+  <!-- Internal arrows -->
+  <line x1="98" y1="104" x2="98" y2="118" stroke="#58a6ff" stroke-width="1" marker-end="url(#a-blue)"/>
+  <line x1="100" y1="160" x2="100" y2="176" stroke="#58a6ff" stroke-width="1" marker-end="url(#a-blue)"/>
+  <line x1="210" y1="160" x2="230" y2="176" stroke="#58a6ff" stroke-width="1" marker-end="url(#a-blue)"/>
+  <line x1="258" y1="139" x2="345" y2="136" stroke="#58a6ff" stroke-width="1" marker-end="url(#a-blue)"/>
+  <text x="300" y="130" text-anchor="middle" fill="#58a6ff" font-size="9" font-style="italic">onStateChange</text>
+  <line x1="258" y1="148" x2="345" y2="186" stroke="#8b949e" stroke-width="1" marker-end="url(#a-gray)"/>
+
+  <!-- ======= Shared State Bridge ======= -->
+  <rect x="24" y="290" width="512" height="34" rx="8" fill="rgba(63,185,80,0.06)" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="280" y="312" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600">SharedMetronomeState (UserDefaults App Group) + Darwin Notifications</text>
+
+  <!-- Arrows: App ↔ Shared -->
+  <line x1="160" y1="274" x2="160" y2="290" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a-green)"/>
+  <line x1="400" y1="290" x2="400" y2="274" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a-green)"/>
+  <!-- Arrows: Shared ↔ Widget -->
+  <line x1="160" y1="324" x2="160" y2="340" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a-green)"/>
+  <line x1="400" y1="340" x2="400" y2="324" stroke="#3fb950" stroke-width="1.5" marker-end="url(#a-green)"/>
+
+  <!-- ======= Widget Extension ======= -->
+  <rect x="24" y="340" width="512" height="110" rx="10" fill="rgba(210,153,34,0.04)" stroke="#d29922" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="280" y="360" text-anchor="middle" fill="#d29922" font-size="11" font-weight="600">WIDGET EXTENSION PROCESS (separate from app)</text>
+
+  <rect x="38" y="372" width="150" height="30" rx="6" fill="#161b22" stroke="#d29922" stroke-width="1"/>
+  <text x="113" y="392" text-anchor="middle" fill="#e6edf3" font-size="11">MetronomeWidget</text>
+
+  <rect x="200" y="372" width="120" height="30" rx="6" fill="#161b22" stroke="#d29922" stroke-width="1"/>
+  <text x="260" y="392" text-anchor="middle" fill="#e6edf3" font-size="11">AppIntents</text>
+
+  <rect x="345" y="372" width="175" height="30" rx="6" fill="#161b22" stroke="#d29922" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="432" y="392" text-anchor="middle" fill="#d29922" font-size="10">Lock Screen / Dynamic Island</text>
+
+  <text x="280" y="430" text-anchor="middle" fill="#8b949e" font-size="9" font-style="italic">Intents run here, not in the app. Communicate via UserDefaults + Darwin notifications.</text>
+
+  <!-- ======= Apple Watch ======= -->
+  <rect x="610" y="8" width="300" height="248" rx="18" fill="none" stroke="#30363d" stroke-width="2"/>
+  <text x="760" y="32" text-anchor="middle" fill="#8b949e" font-size="14" font-weight="700" letter-spacing="0.5">Apple Watch</text>
+
+  <rect x="624" y="44" width="272" height="200" rx="10" fill="rgba(188,140,255,0.04)" stroke="#bc8cff" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="760" y="62" text-anchor="middle" fill="#bc8cff" font-size="11" font-weight="600">WATCH APP</text>
+
+  <rect x="638" y="74" width="244" height="30" rx="6" fill="#161b22" stroke="#bc8cff" stroke-width="1"/>
+  <text x="760" y="94" text-anchor="middle" fill="#e6edf3" font-size="11">ContentView</text>
+
+  <rect x="638" y="118" width="244" height="36" rx="6" fill="#161b22" stroke="#bc8cff" stroke-width="1.5"/>
+  <text x="760" y="140" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">WatchSessionManager</text>
+
+  <line x1="760" y1="104" x2="760" y2="118" stroke="#bc8cff" stroke-width="1" marker-end="url(#a-purple)"/>
+
+  <rect x="638" y="170" width="244" height="30" rx="6" fill="#161b22" stroke="#8b949e" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="760" y="190" text-anchor="middle" fill="#8b949e" font-size="10">System Now Playing Screen</text>
+  <text x="760" y="216" text-anchor="middle" fill="#8b949e" font-size="9" font-style="italic">powered by MPNowPlayingInfoCenter</text>
+
+  <!-- ======= WCSession Connection ======= -->
+  <line x1="520" y1="133" x2="638" y2="133" stroke="#bc8cff" stroke-width="2" marker-end="url(#a-purple)"/>
+  <line x1="638" y1="140" x2="520" y2="140" stroke="#58a6ff" stroke-width="2" marker-end="url(#a-blue)"/>
+
+  <rect x="540" y="116" width="78" height="18" rx="4" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="579" y="130" text-anchor="middle" fill="#bc8cff" font-size="9" font-weight="600">WCSession</text>
+  <text x="579" y="158" text-anchor="middle" fill="#8b949e" font-size="9">Bluetooth</text>
+
+  <!-- ======= System Services ======= -->
+  <rect x="610" y="290" width="300" height="172" rx="12" fill="none" stroke="#30363d" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="760" y="312" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">iOS SYSTEM SERVICES</text>
+
+  <rect x="628" y="324" width="264" height="26" rx="5" fill="#161b22" stroke="#8b949e" stroke-width="1"/>
+  <text x="760" y="342" text-anchor="middle" fill="#8b949e" font-size="10">AVAudioSession (.playback + .mixWithOthers)</text>
+
+  <rect x="628" y="358" width="264" height="26" rx="5" fill="#161b22" stroke="#8b949e" stroke-width="1"/>
+  <text x="760" y="376" text-anchor="middle" fill="#8b949e" font-size="10">MPRemoteCommandCenter (Control Center)</text>
+
+  <rect x="628" y="392" width="264" height="26" rx="5" fill="#161b22" stroke="#8b949e" stroke-width="1"/>
+  <text x="760" y="410" text-anchor="middle" fill="#8b949e" font-size="10">ActivityKit (Live Activity + Dynamic Island)</text>
+
+  <text x="760" y="440" text-anchor="middle" fill="#8b949e" font-size="9" font-style="italic">used by App Process components</text>
+</svg>
+</div>
+
+<h3>Component Details</h3>
+<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Click a component for method-level details.</p>
+
+<div class="arch-grid">
+  <div class="arch-box" data-detail="engine" onclick="showDetail('engine')">
+    <h3>MetronomeEngine <span class="tag tag-ios">iOS</span></h3>
+    <p>Owns all state: BPM, isPlaying, volume. Runs AVAudioEngine + Timer for tick playback. Drives LiveActivityManager, Now Playing, and watch state sync.</p>
+    <span class="file-link">MetronomeApp/MetronomeEngine.swift</span>
+  </div>
+  <div class="arch-box" data-detail="phone-session" onclick="showDetail('phone-session')">
+    <h3>PhoneSessionManager <span class="tag tag-ios">iOS</span></h3>
+    <p>WCSession delegate on iOS side. Receives commands from watch, drives engine. Pushes state via applicationContext + sendMessage.</p>
+    <span class="file-link">MetronomeApp/PhoneSessionManager.swift</span>
+  </div>
+  <div class="arch-box" data-detail="live-activity" onclick="showDetail('live-activity')">
+    <h3>LiveActivityManager <span class="tag tag-ios">iOS</span></h3>
+    <p>Manages ActivityKit Live Activity. Throttles BPM updates, bypasses throttle for play/stop. Falls back to startActivity() if none exists.</p>
+    <span class="file-link">MetronomeApp/LiveActivityManager.swift</span>
+  </div>
+  <div class="arch-box" data-detail="audio-session" onclick="showDetail('audio-session')">
+    <h3>AudioSessionManager <span class="tag tag-ios">iOS</span></h3>
+    <p>Configures AVAudioSession with .playback + .mixWithOthers. Detects audio interruptions and posts notifications.</p>
+    <span class="file-link">MetronomeApp/AudioSessionManager.swift</span>
+  </div>
+  <div class="arch-box" data-detail="widget" onclick="showDetail('widget')">
+    <h3>MetronomeWidget <span class="tag tag-widget">Widget</span></h3>
+    <p>Lock screen + Dynamic Island UI. Buttons trigger AppIntents (Toggle, Increment, Decrement). Shows BPM + play/stop state.</p>
+    <span class="file-link">MetronomeWidget/MetronomeWidget.swift</span>
+  </div>
+  <div class="arch-box" data-detail="intents" onclick="showDetail('intents')">
+    <h3>AppIntents <span class="tag tag-widget">Widget</span></h3>
+    <p>ToggleMetronomeIntent, Start, Stop, Increment, Decrement. Run in widget extension process. Communicate via SharedMetronomeState + Darwin notifications.</p>
+    <span class="file-link">MetronomeApp/MetronomeAppIntents.swift</span>
+  </div>
+  <div class="arch-box" data-detail="shared-state" onclick="showDetail('shared-state')">
+    <h3>SharedMetronomeState <span class="tag tag-shared">Shared</span></h3>
+    <p>UserDefaults app group (group.com.danielbutler.MetronomeApp). Cross-process source of truth for bpm, isPlaying, volume. Posts Darwin notifications on change.</p>
+    <span class="file-link">MetronomeApp/MetronomeApp/SharedMetronomeState.swift</span>
+  </div>
+  <div class="arch-box" data-detail="watch-session" onclick="showDetail('watch-session')">
+    <h3>WatchSessionManager <span class="tag tag-watch">watchOS</span></h3>
+    <p>WCSession delegate on watch. Sends commands (toggle, incrementBPM, decrementBPM) to phone. Receives state updates. Falls back to transferUserInfo when unreachable.</p>
+    <span class="file-link">OneEightyWatch Watch App/WatchSessionManager.swift</span>
+  </div>
+</div>
+
+<!-- Detail panels -->
+<div class="detail-panel" id="detail-engine">
+  <h3>MetronomeEngine - Key Methods</h3>
+  <div class="methods">
+    <div class="method"><span class="method-line">L97-111</span><span class="method-name">togglePlayback()</span><div class="method-desc">Flips isPlaying. Calls start/stopMetronome(). Updates SharedMetronomeState, LiveActivityManager, NowPlaying, onStateChange callback.</div></div>
+    <div class="method"><span class="method-line">L113-131</span><span class="method-name">incrementBPM() / decrementBPM()</span><div class="method-desc">+/- 1 BPM (clamped 150-230). If playing, triggers handleBPMChange() which debounces 0.3s before restarting timer.</div></div>
+    <div class="method"><span class="method-line">L53-72</span><span class="method-name">setup()</span><div class="method-desc">Full init: resets to defaults (180 BPM, stopped), sets up audio engine, remote commands, state observer, interruption observer, Now Playing.</div></div>
+    <div class="method"><span class="method-line">L76-85</span><span class="method-name">ensureReady()</span><div class="method-desc">Lightweight init for background wake. Same as setup() but preserves current state. No-ops if already set up.</div></div>
+    <div class="method"><span class="method-line">L263-277</span><span class="method-name">handleBPMChange()</span><div class="method-desc">Stops timer immediately. Waits 0.3s debounce. Restarts timer with new BPM. Prevents rapid tick restarts during +/- button mashing.</div></div>
+    <div class="method"><span class="method-line">L387-437</span><span class="method-name">setupRemoteCommands() / updateNowPlaying()</span><div class="method-desc">Registers play/pause/toggle + next/prev track (mapped to BPM +/-) with MPRemoteCommandCenter. Updates MPNowPlayingInfoCenter with "BPM SPM" title.</div></div>
+  </div>
+</div>
+
+<div class="detail-panel" id="detail-phone-session">
+  <h3>PhoneSessionManager - Key Methods</h3>
+  <div class="methods">
+    <div class="method"><span class="method-line">L103-131</span><span class="method-name">handleWatchCommand()</span><div class="method-desc">Dispatches: "toggle", "start", "stop", "incrementBPM", "decrementBPM". Calls engine.ensureReady() first for background wake. Sends updated state back to watch.</div></div>
+    <div class="method"><span class="method-line">L35-60</span><span class="method-name">sendStateToWatch()</span><div class="method-desc">Always calls updateApplicationContext() (persists). Also sendMessage() if reachable (immediate). Payload: {bpm, isPlaying}.</div></div>
+  </div>
+</div>
+
+<div class="detail-panel" id="detail-live-activity">
+  <h3>LiveActivityManager - Key Methods</h3>
+  <div class="methods">
+    <div class="method"><span class="method-line">L63-86</span><span class="method-name">startActivity()</span><div class="method-desc">Creates new Live Activity via Activity.request(). Ends any existing one first. Starts observing contentUpdates for delivery confirmation.</div></div>
+    <div class="method"><span class="method-line">L88-139</span><span class="method-name">updateActivity()</span><div class="method-desc">Critical updates (play/stop): bypass throttle, push immediately. Normal updates (BPM): coalesced via timer. If no current activity exists, falls back to startActivity() (L95-102).</div></div>
+  </div>
+</div>
+
+<div class="detail-panel" id="detail-audio-session">
+  <h3>AudioSessionManager</h3>
+  <div class="methods">
+    <div class="method"><span class="method-line">L21-29</span><span class="method-name">activate()</span><div class="method-desc">Sets AVAudioSession to .playback + .mixWithOthers. This allows ticks to play alongside audiobooks/music without interrupting them.</div></div>
+    <div class="method"><span class="method-line">L48-69</span><span class="method-name">handleInterruption()</span><div class="method-desc">On .began: posts .audioInterruptionBegan. On .ended with .shouldResume: posts .audioInterruptionEnded. MetronomeEngine observes these.</div></div>
+  </div>
+</div>
+
+<div class="detail-panel" id="detail-widget">
+  <h3>MetronomeWidget Layout</h3>
+  <div class="methods">
+    <div class="method"><span class="method-line">L42-82</span><span class="method-name">Lock Screen / Banner</span><div class="method-desc">Three buttons: [-] DecrementBPMIntent | [BPM play/stop] ToggleMetronomeIntent | [+] IncrementBPMIntent</div></div>
+    <div class="method"><span class="method-line">L86-120</span><span class="method-name">Dynamic Island (Expanded)</span><div class="method-desc">Same three-button layout as lock screen, smaller sizes.</div></div>
+    <div class="method"><span class="method-line">L121-131</span><span class="method-name">Dynamic Island (Compact/Minimal)</span><div class="method-desc">Leading: figure.run icon. Trailing: BPM number. Minimal: figure.run icon only.</div></div>
+  </div>
+</div>
+
+<div class="detail-panel" id="detail-intents">
+  <h3>AppIntents - Cross-Process Communication</h3>
+  <div class="methods">
+    <div class="method"><span class="method-line">L48-61</span><span class="method-name">ToggleMetronomeIntent</span><div class="method-desc">Reads isPlaying from SharedMetronomeState, flips it, writes back, pushes activity update, posts Darwin command (start or stop).</div></div>
+    <div class="method"><span class="method-line">L101-131</span><span class="method-name">Increment/DecrementBPMIntent</span><div class="method-desc">Reads BPM from SharedMetronomeState, +/- 1 (clamped 150-230), writes back, pushes activity update, posts Darwin stateChanged.</div></div>
+  </div>
+  <div class="section-note" style="margin-top:12px">
+    <strong>Key insight:</strong> Intents run in the widget extension process, NOT the app process. They communicate with the app via SharedMetronomeState (UserDefaults) and Darwin notifications. The app's StateChangeObserver picks up these notifications and drives the engine.
+  </div>
+</div>
+
+<div class="detail-panel" id="detail-shared-state">
+  <h3>SharedMetronomeState - Properties</h3>
+  <div class="methods">
+    <div class="method"><span class="method-name">bpm: Int</span> <span class="method-line">default: 180</span><div class="method-desc">UserDefaults key "bpm". Setter posts Darwin notification "stateChanged".</div></div>
+    <div class="method"><span class="method-name">isPlaying: Bool</span> <span class="method-line">default: false</span><div class="method-desc">UserDefaults key "isPlaying". Used by ToggleMetronomeIntent to decide start vs stop.</div></div>
+    <div class="method"><span class="method-name">volume: Float</span> <span class="method-line">default: 0.4</span><div class="method-desc">UserDefaults key "volume".</div></div>
+  </div>
+  <div class="section-note" style="margin-top:12px">
+    <strong>App Group:</strong> group.com.danielbutler.MetronomeApp<br>
+    <strong>Darwin Notifications:</strong> stateChanged, command.start, command.stop
+  </div>
+</div>
+
+<div class="detail-panel" id="detail-watch-session">
+  <h3>WatchSessionManager - Key Methods</h3>
+  <div class="methods">
+    <div class="method"><span class="method-line">L53-78</span><span class="method-name">sendCommand()</span><div class="method-desc">If reachable: sendMessage with reply handler (gets state back). On error: falls back to transferUserInfo. If unreachable: transferUserInfo (queued delivery).</div></div>
+    <div class="method"><span class="method-line">L94-109</span><span class="method-name">activationDidComplete</span><div class="method-desc">On session activation, reads receivedApplicationContext to restore last known state immediately (BPM + isPlaying).</div></div>
+  </div>
+</div>
+
+</section>
+
+<!-- ==================== HAPPY PATHS ==================== -->
+<section id="happy-paths">
+<h2>Happy Paths</h2>
+<p>What happens when a button is tapped. Each flow shows the complete chain from tap to every system that gets updated.</p>
+
+<div class="flow-tabs">
+  <div class="flow-tab active" onclick="showFlow('phone')">Phone App</div>
+  <div class="flow-tab" onclick="showFlow('watch')">Watch App</div>
+  <div class="flow-tab" onclick="showFlow('live-activity')">Live Activity / DI</div>
+  <div class="flow-tab" onclick="showFlow('control-center')">Control Center</div>
+</div>
+
+<!-- Phone Flow -->
+<div class="flow-content active" id="flow-phone">
+  <h3>Tap START on iPhone</h3>
+  <div class="flow-steps">
+    <div class="flow-step" data-num="1">
+      <div class="component c-engine">ContentView</div>
+      <div class="action">User taps START button</div>
+      <div class="code-ref">ContentView.swift:89 &rarr; engine.togglePlayback()</div>
+    </div>
+    <div class="flow-step" data-num="2">
+      <div class="component c-engine">MetronomeEngine</div>
+      <div class="action">Sets isPlaying = true, calls startMetronome() which schedules Timer + AVAudioPlayerNode ticks</div>
+      <div class="code-ref">MetronomeEngine.swift:97-100</div>
+    </div>
+    <div class="flow-step" data-num="3">
+      <div class="component c-shared">SharedMetronomeState</div>
+      <div class="action">Writes isPlaying = true to UserDefaults app group</div>
+      <div class="code-ref">MetronomeEngine.swift:101</div>
+    </div>
+    <div class="flow-step" data-num="4">
+      <div class="component c-widget">LiveActivityManager</div>
+      <div class="action">updateActivity(bpm: 180, isPlaying: true) &mdash; critical priority, bypasses throttle, pushes immediately</div>
+      <div class="code-ref">MetronomeEngine.swift:107 &rarr; LiveActivityManager.swift:88-112</div>
+    </div>
+    <div class="flow-step" data-num="5">
+      <div class="component c-system">MPNowPlayingInfoCenter</div>
+      <div class="action">Updates title to "180 SPM", artist to "Playing", playbackState to .playing</div>
+      <div class="code-ref">MetronomeEngine.swift:108 &rarr; updateNowPlaying() L429-437</div>
+    </div>
+    <div class="flow-step" data-num="6">
+      <div class="component c-phone">PhoneSessionManager</div>
+      <div class="action">onStateChange fires &rarr; sendStateToWatch() &rarr; updateApplicationContext + sendMessage</div>
+      <div class="code-ref">MetronomeEngine.swift:109 &rarr; PhoneSessionManager.swift:35-60</div>
+    </div>
+    <div class="flow-step" data-num="7">
+      <div class="component c-watch">WatchSessionManager</div>
+      <div class="action">Receives message or applicationContext &rarr; applyState() updates local bpm + isPlaying</div>
+      <div class="code-ref">WatchSessionManager.swift:82-90</div>
+    </div>
+  </div>
+</div>
+
+<!-- Watch Flow -->
+<div class="flow-content" id="flow-watch">
+  <h3>Tap Play on Apple Watch</h3>
+  <div class="flow-steps">
+    <div class="flow-step" data-num="1">
+      <div class="component c-watch">Watch ContentView</div>
+      <div class="action">User taps play button</div>
+      <div class="code-ref">OneEightyWatch/ContentView.swift:40 &rarr; session.toggle()</div>
+    </div>
+    <div class="flow-step" data-num="2">
+      <div class="component c-watch">WatchSessionManager</div>
+      <div class="action">sendCommand("toggle") &mdash; if phone reachable: sendMessage, else: transferUserInfo (queued)</div>
+      <div class="code-ref">WatchSessionManager.swift:53-78</div>
+    </div>
+    <div class="flow-step" data-num="3">
+      <div class="component c-phone">PhoneSessionManager</div>
+      <div class="action">didReceiveMessage &rarr; handleWatchCommand("toggle") &rarr; engine.ensureReady() then engine.togglePlayback()</div>
+      <div class="code-ref">PhoneSessionManager.swift:91-96, 103-131</div>
+      <div class="note">ensureReady() initializes audio engine if phone was woken from background</div>
+    </div>
+    <div class="flow-step" data-num="4">
+      <div class="component c-engine">MetronomeEngine</div>
+      <div class="action">Same as phone flow: starts audio, updates SharedState, LiveActivity, NowPlaying</div>
+      <div class="code-ref">MetronomeEngine.swift:97-111</div>
+    </div>
+    <div class="flow-step" data-num="5">
+      <div class="component c-phone">PhoneSessionManager</div>
+      <div class="action">sendStateToWatch() sends reply with {bpm, isPlaying} via applicationContext + sendMessage</div>
+      <div class="code-ref">PhoneSessionManager.swift:130, 35-60</div>
+    </div>
+    <div class="flow-step" data-num="6">
+      <div class="component c-watch">WatchSessionManager</div>
+      <div class="action">Reply handler or didReceiveMessage &rarr; applyState() updates UI</div>
+      <div class="code-ref">WatchSessionManager.swift:63-66, 82-90</div>
+    </div>
+  </div>
+</div>
+
+<!-- Live Activity Flow -->
+<div class="flow-content" id="flow-live-activity">
+  <h3>Tap Play/Stop on Lock Screen or Dynamic Island</h3>
+  <div class="flow-steps">
+    <div class="flow-step" data-num="1">
+      <div class="component c-widget">MetronomeWidget</div>
+      <div class="action">Button(intent: ToggleMetronomeIntent()) tapped on lock screen or DI expanded view</div>
+      <div class="code-ref">MetronomeWidget.swift:57 (lock screen), :99 (DI expanded)</div>
+    </div>
+    <div class="flow-step" data-num="2">
+      <div class="component c-widget">ToggleMetronomeIntent</div>
+      <div class="action">Reads isPlaying from SharedMetronomeState, flips it, writes back</div>
+      <div class="code-ref">MetronomeAppIntents.swift:48-54</div>
+      <div class="note">Runs in widget extension process, NOT the app process</div>
+    </div>
+    <div class="flow-step" data-num="3">
+      <div class="component c-widget">ToggleMetronomeIntent</div>
+      <div class="action">Pushes activity update directly via Activity.update() for all active activities</div>
+      <div class="code-ref">MetronomeAppIntents.swift:56 &rarr; pushActivityUpdate() L35-41</div>
+    </div>
+    <div class="flow-step" data-num="4">
+      <div class="component c-widget">ToggleMetronomeIntent</div>
+      <div class="action">Posts Darwin notification: commandStart or commandStop</div>
+      <div class="code-ref">MetronomeAppIntents.swift:59</div>
+    </div>
+    <div class="flow-step" data-num="5">
+      <div class="component c-shared">StateChangeObserver</div>
+      <div class="action">Picks up Darwin notification in app process, calls engine's handlePlayCommand() or handleStopCommand()</div>
+      <div class="code-ref">StateChangeObserver.swift:44-67 &rarr; MetronomeEngine.swift:313-332</div>
+    </div>
+    <div class="flow-step" data-num="6">
+      <div class="component c-engine">MetronomeEngine</div>
+      <div class="action">Starts/stops audio, updates SharedState, LiveActivity, NowPlaying, sends state to watch</div>
+      <div class="code-ref">MetronomeEngine.swift:313-332</div>
+    </div>
+  </div>
+</div>
+
+<!-- Control Center Flow -->
+<div class="flow-content" id="flow-control-center">
+  <h3>Tap Play/Pause in Control Center or Now Playing on Watch</h3>
+  <div class="flow-steps">
+    <div class="flow-step" data-num="1">
+      <div class="component c-system">System (Control Center / Now Playing)</div>
+      <div class="action">User taps play or pause in the system Now Playing widget</div>
+    </div>
+    <div class="flow-step" data-num="2">
+      <div class="component c-system">MPRemoteCommandCenter</div>
+      <div class="action">Dispatches playCommand / pauseCommand / togglePlayPauseCommand to registered handler</div>
+      <div class="code-ref">MetronomeEngine.swift:387-411</div>
+    </div>
+    <div class="flow-step" data-num="3">
+      <div class="component c-engine">MetronomeEngine</div>
+      <div class="action">Handler calls togglePlayback() &mdash; same full flow as phone tap</div>
+      <div class="code-ref">MetronomeEngine.swift:97-111</div>
+    </div>
+    <div class="flow-step" data-num="4">
+      <div class="component c-system">MPRemoteCommandCenter</div>
+      <div class="action">Next/Previous track buttons map to incrementBPM() / decrementBPM()</div>
+      <div class="code-ref">MetronomeEngine.swift:414-426</div>
+      <div class="note">Skip forward = +1 BPM, skip backward = -1 BPM</div>
+    </div>
+  </div>
+</div>
+
+</section>
+
+<!-- ==================== EDGE CASES ==================== -->
+<section id="edge-cases">
+<h2>Edge Cases</h2>
+
+<div class="edge-case">
+  <div class="edge-header" onclick="toggleEdge(this)">
+    <h3><span class="severity severity-handled">Handled</span> Audio interrupted by another app (Audible, Music)</h3>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="edge-body">
+    <p>When another app takes over the audio session (e.g., starting an audiobook), iOS posts an interruption notification.</p>
+    <div class="flow-steps">
+      <div class="flow-step" data-num="1"><div class="component c-system">iOS</div><div class="action">AVAudioSession.interruptionNotification fires with .began</div></div>
+      <div class="flow-step" data-num="2"><div class="component c-engine">AudioSessionManager</div><div class="action">Posts .audioInterruptionBegan</div><div class="code-ref">AudioSessionManager.swift:57</div></div>
+      <div class="flow-step" data-num="3"><div class="component c-engine">MetronomeEngine</div><div class="action">Saves wasPlayingBeforeInterruption, stops metronome, sets isPlaying=false, updates Live Activity + Now Playing</div><div class="code-ref">MetronomeEngine.swift:356-368</div></div>
+      <div class="flow-step" data-num="4"><div class="component c-system">iOS</div><div class="action">When interruption ends with .shouldResume, engine re-activates audio session and resumes playback</div><div class="code-ref">MetronomeEngine.swift:370-383</div></div>
+    </div>
+    <p style="margin-top:12px"><strong>With .mixWithOthers:</strong> This interruption flow is less likely since we mix alongside other audio. It mainly triggers for phone calls or Siri.</p>
+  </div>
+</div>
+
+<div class="edge-case">
+  <div class="edge-header" onclick="toggleEdge(this)">
+    <h3><span class="severity severity-handled">Handled</span> Watch sends command when phone is unreachable</h3>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="edge-body">
+    <p>If the phone app is suspended or out of Bluetooth range, sendMessage will fail.</p>
+    <div class="flow-steps">
+      <div class="flow-step" data-num="1"><div class="component c-watch">WatchSessionManager</div><div class="action">Checks session.isReachable &mdash; returns false</div><div class="code-ref">WatchSessionManager.swift:61</div></div>
+      <div class="flow-step" data-num="2"><div class="component c-watch">WatchSessionManager</div><div class="action">Falls back to transferUserInfo() &mdash; queues command for delivery when phone is available</div><div class="code-ref">WatchSessionManager.swift:75</div></div>
+      <div class="flow-step" data-num="3"><div class="component c-watch">Watch UI</div><div class="action">Shows "Phone not connected" warning text</div><div class="code-ref">OneEightyWatch/ContentView.swift:67-71</div></div>
+    </div>
+    <p style="margin-top:12px"><strong>Note:</strong> transferUserInfo delivers when connectivity resumes, but may be delayed. The watch UI won't update until it gets a reply.</p>
+  </div>
+</div>
+
+<div class="edge-case">
+  <div class="edge-header" onclick="toggleEdge(this)">
+    <h3><span class="severity severity-handled">Handled</span> BPM change while playing (debounce)</h3>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="edge-body">
+    <p>Rapidly tapping +/- while the metronome is playing would cause jarring tick restarts. The engine debounces.</p>
+    <div class="flow-steps">
+      <div class="flow-step" data-num="1"><div class="component c-engine">MetronomeEngine</div><div class="action">incrementBPM() called &rarr; stopMetronome() immediately (no more ticks)</div><div class="code-ref">MetronomeEngine.swift:266</div></div>
+      <div class="flow-step" data-num="2"><div class="component c-engine">MetronomeEngine</div><div class="action">Schedules timer for 0.3s. If another +/- happens before timer fires, timer resets.</div><div class="code-ref">MetronomeEngine.swift:267-276</div></div>
+      <div class="flow-step" data-num="3"><div class="component c-engine">MetronomeEngine</div><div class="action">After 0.3s of no changes: startMetronome() with new BPM</div><div class="code-ref">MetronomeEngine.swift:273-274</div></div>
+    </div>
+    <p style="margin-top:12px"><strong>UX effect:</strong> Ticks pause briefly during rapid BPM adjustment, then resume at the new tempo. LiveActivity + NowPlaying update on each tap (no debounce on those).</p>
+  </div>
+</div>
+
+<div class="edge-case">
+  <div class="edge-header" onclick="toggleEdge(this)">
+    <h3><span class="severity severity-limitation">Limitation</span> Starting Live Activity from background (watch-initiated)</h3>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="edge-body">
+    <p>iOS requires the app to be in the <strong>foreground</strong> to start a new Live Activity via Activity.request(). When the watch starts playback, the phone may be backgrounded.</p>
+    <div class="flow-steps">
+      <div class="flow-step" data-num="1"><div class="component c-watch">Watch</div><div class="action">Sends "toggle" command, phone wakes in background</div></div>
+      <div class="flow-step" data-num="2"><div class="component c-engine">MetronomeEngine</div><div class="action">Audio starts (background audio mode works), but...</div></div>
+      <div class="flow-step" data-num="3"><div class="component c-widget">LiveActivityManager</div><div class="action">Activity.request() may fail silently in background context</div><div class="note">iOS restriction: "Your app must be in the foreground to start a Live Activity"</div></div>
+    </div>
+    <p style="margin-top:12px"><strong>Workaround:</strong> Open the phone app once (creates the Live Activity), then use the watch as remote. Updates to existing activities work from background.</p>
+    <p><strong>Future fix:</strong> ActivityKit push notifications (iOS 17.2+) can start Live Activities from server-side. See <a href="https://github.com/daniel-butler/180/issues/6">GitHub Issue #6</a>.</p>
+  </div>
+</div>
+
+<div class="edge-case">
+  <div class="edge-header" onclick="toggleEdge(this)">
+    <h3><span class="severity severity-limitation">Limitation</span> Phone app force-quit by user</h3>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="edge-body">
+    <p>If the user swipes up from the app switcher to force-quit the phone app, WCSession cannot wake it. This is an iOS restriction.</p>
+    <div class="flow-steps">
+      <div class="flow-step" data-num="1"><div class="component c-watch">Watch</div><div class="action">Sends command via sendMessage &mdash; fails (no app to receive)</div></div>
+      <div class="flow-step" data-num="2"><div class="component c-watch">Watch</div><div class="action">Falls back to transferUserInfo (queued), but won't deliver until app is manually reopened</div></div>
+    </div>
+    <p style="margin-top:12px"><strong>Mitigation:</strong> The watch UI shows "Phone not connected" when isReachable is false. Audio stops on the phone because the process is gone.</p>
+  </div>
+</div>
+
+<div class="edge-case">
+  <div class="edge-header" onclick="toggleEdge(this)">
+    <h3><span class="severity severity-handled">Handled</span> Live Activity update throttling</h3>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="edge-body">
+    <p>ActivityKit limits updates to ~4 per hour for normal priority. Rapid BPM tapping would exhaust this budget.</p>
+    <div class="flow-steps">
+      <div class="flow-step" data-num="1"><div class="component c-widget">LiveActivityManager</div><div class="action">Play/stop changes are "critical" &mdash; bypass throttle, push immediately</div><div class="code-ref">LiveActivityManager.swift:89, 105-112</div></div>
+      <div class="flow-step" data-num="2"><div class="component c-widget">LiveActivityManager</div><div class="action">BPM changes are "normal" &mdash; coalesced via timer, only last value sent</div><div class="code-ref">LiveActivityManager.swift:115-138</div></div>
+      <div class="flow-step" data-num="3"><div class="component c-widget">ActivityUpdateTracker</div><div class="action">Tracks hourly update count, warns when approaching budget limit</div><div class="code-ref">ActivityUpdateTracker.swift</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="edge-case">
+  <div class="edge-header" onclick="toggleEdge(this)">
+    <h3><span class="severity severity-handled">Handled</span> Widget intent runs in separate process</h3>
+    <span class="chevron">&#9654;</span>
+  </div>
+  <div class="edge-body">
+    <p>When a Live Activity button is tapped, the Intent runs in the widget extension process. It cannot directly access MetronomeEngine.</p>
+    <div class="flow-steps">
+      <div class="flow-step" data-num="1"><div class="component c-widget">Widget Extension Process</div><div class="action">ToggleMetronomeIntent reads/writes SharedMetronomeState (UserDefaults app group)</div></div>
+      <div class="flow-step" data-num="2"><div class="component c-widget">Widget Extension Process</div><div class="action">Posts Darwin notification (commandStart/commandStop) to notify app process</div></div>
+      <div class="flow-step" data-num="3"><div class="component c-engine">App Process</div><div class="action">StateChangeObserver picks up Darwin notification, drives MetronomeEngine</div></div>
+    </div>
+    <p style="margin-top:12px"><strong>Why Darwin notifications?</strong> NSNotificationCenter is process-local. Darwin notifications (CFNotificationCenter) cross process boundaries. UserDefaults app group provides shared data storage.</p>
+  </div>
+</div>
+
+</section>
+
+<!-- ==================== STATE MACHINE ==================== -->
+<section id="state">
+<h2>Engine State Machine</h2>
+
+<div class="section-note">
+  <strong>MetronomeEngine</strong> has two primary state variables: <code>isPlaying: Bool</code> and <code>bpm: Int</code> (range 150-230). Every state transition updates 5 systems: SharedMetronomeState, LiveActivityManager, MPNowPlayingInfoCenter, PhoneSessionManager (watch), and the audio timer.
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+  <div class="arch-box" style="cursor:default; border-color: var(--green);">
+    <h3 style="color:var(--green)">Stopped (isPlaying = false)</h3>
+    <p><strong>Timer:</strong> nil (no ticks)<br>
+    <strong>PlayerNode:</strong> stopped<br>
+    <strong>Now Playing:</strong> "180 SPM" / "Stopped" / .paused<br>
+    <strong>Live Activity:</strong> shows START button<br>
+    <strong>Watch:</strong> shows play icon (green)</p>
+    <p style="margin-top:8px; color:var(--text)"><strong>Transitions out:</strong></p>
+    <p>togglePlayback() &rarr; Playing<br>
+    handlePlayCommand() &rarr; Playing<br>
+    incrementBPM() / decrementBPM() &rarr; Stopped (new BPM)<br>
+    setBPM() &rarr; Stopped (new BPM)</p>
+  </div>
+  <div class="arch-box" style="cursor:default; border-color: var(--red);">
+    <h3 style="color:var(--red)">Playing (isPlaying = true)</h3>
+    <p><strong>Timer:</strong> fires every 60/BPM seconds<br>
+    <strong>PlayerNode:</strong> scheduling tick buffer on each fire<br>
+    <strong>Now Playing:</strong> "180 SPM" / "Playing" / .playing<br>
+    <strong>Live Activity:</strong> shows STOP button<br>
+    <strong>Watch:</strong> shows stop icon (red)</p>
+    <p style="margin-top:8px; color:var(--text)"><strong>Transitions out:</strong></p>
+    <p>togglePlayback() &rarr; Stopped<br>
+    handleStopCommand() &rarr; Stopped<br>
+    handleInterruptionBegan() &rarr; Stopped (saves wasPlaying)<br>
+    incrementBPM() / decrementBPM() &rarr; Playing (debounce 0.3s)</p>
+  </div>
+</div>
+
+<h3 style="margin-top:24px">Every State Change Updates:</h3>
+<div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top:12px;">
+  <div class="arch-box" style="cursor:default; padding:12px; text-align:center;">
+    <span style="font-size:20px">1.</span><br>
+    <span style="color:var(--pink); font-weight:600; font-size:13px;">SharedMetronome<wbr>State</span><br>
+    <span style="font-size:11px; color:var(--text-muted)">UserDefaults</span>
+  </div>
+  <div class="arch-box" style="cursor:default; padding:12px; text-align:center;">
+    <span style="font-size:20px">2.</span><br>
+    <span style="color:var(--orange); font-weight:600; font-size:13px;">LiveActivity<wbr>Manager</span><br>
+    <span style="font-size:11px; color:var(--text-muted)">Lock Screen / DI</span>
+  </div>
+  <div class="arch-box" style="cursor:default; padding:12px; text-align:center;">
+    <span style="font-size:20px">3.</span><br>
+    <span style="color:var(--accent); font-weight:600; font-size:13px;">NowPlaying<wbr>InfoCenter</span><br>
+    <span style="font-size:11px; color:var(--text-muted)">Control Center</span>
+  </div>
+  <div class="arch-box" style="cursor:default; padding:12px; text-align:center;">
+    <span style="font-size:20px">4.</span><br>
+    <span style="color:var(--green); font-weight:600; font-size:13px;">onStateChange</span><br>
+    <span style="font-size:11px; color:var(--text-muted)">&rarr; Watch</span>
+  </div>
+  <div class="arch-box" style="cursor:default; padding:12px; text-align:center;">
+    <span style="font-size:20px">5.</span><br>
+    <span style="color:var(--red); font-weight:600; font-size:13px;">Audio Timer</span><br>
+    <span style="font-size:11px; color:var(--text-muted)">Tick playback</span>
+  </div>
+</div>
+
+</section>
+
+<!-- ==================== DOCS ==================== -->
+<section id="docs">
+<h2>Reference Links</h2>
+
+<h3>Apple Documentation</h3>
+<div class="methods">
+  <div class="method"><span class="method-name">ActivityKit</span><div class="method-desc"><a href="https://developer.apple.com/documentation/activitykit">developer.apple.com/documentation/activitykit</a> &mdash; Live Activities, Dynamic Island</div></div>
+  <div class="method"><span class="method-name">ActivityKit Push Notifications</span><div class="method-desc"><a href="https://developer.apple.com/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications">Starting Live Activities with push notifications</a> &mdash; iOS 17.2+ start from background</div></div>
+  <div class="method"><span class="method-name">WatchConnectivity</span><div class="method-desc"><a href="https://developer.apple.com/documentation/watchconnectivity">developer.apple.com/documentation/watchconnectivity</a> &mdash; WCSession, sendMessage, applicationContext</div></div>
+  <div class="method"><span class="method-name">MPNowPlayingInfoCenter</span><div class="method-desc"><a href="https://developer.apple.com/documentation/mediaplayer/mpnowplayinginfocenter">developer.apple.com/documentation/mediaplayer/mpnowplayinginfocenter</a> &mdash; Now Playing metadata</div></div>
+  <div class="method"><span class="method-name">AVAudioSession</span><div class="method-desc"><a href="https://developer.apple.com/documentation/avfaudio/avaudiosession">developer.apple.com/documentation/avfaudio/avaudiosession</a> &mdash; .playback, .mixWithOthers</div></div>
+  <div class="method"><span class="method-name">Now Playing on Apple Watch</span><div class="method-desc"><a href="https://support.apple.com/guide/watch/now-playing-apd4ea5db227/watchos">support.apple.com &mdash; Now Playing</a></div></div>
+</div>
+
+<h3 style="margin-top:24px">GitHub Issues</h3>
+<div class="methods">
+  <div class="method"><span class="method-name">#6 (Open)</span><div class="method-desc"><a href="https://github.com/daniel-butler/180/issues/6">Start Live Activity from watch without phone app in foreground</a></div></div>
+  <div class="method"><span class="method-name">#1 (Open)</span><div class="method-desc"><a href="https://github.com/daniel-butler/180/issues/1">App Store submission prep checklist</a></div></div>
+  <div class="method"><span class="method-name">#5 (Closed)</span><div class="method-desc"><a href="https://github.com/daniel-butler/180/issues/5">Audio coexistence + interruption handling</a> &mdash; Fixed: .mixWithOthers + interruption observers</div></div>
+  <div class="method"><span class="method-name">#3 (Closed)</span><div class="method-desc"><a href="https://github.com/daniel-butler/180/issues/3">Apple Watch companion app</a> &mdash; Implemented</div></div>
+</div>
+
+<h3 style="margin-top:24px">Source Files</h3>
+<div class="methods" style="font-size:13px;">
+  <div class="method"><code>MetronomeApp/MetronomeEngine.swift</code> <span class="method-desc">&mdash; Core engine: state, audio, all coordination</span></div>
+  <div class="method"><code>MetronomeApp/PhoneSessionManager.swift</code> <span class="method-desc">&mdash; iOS WCSession: watch commands, state push</span></div>
+  <div class="method"><code>MetronomeApp/LiveActivityManager.swift</code> <span class="method-desc">&mdash; ActivityKit: throttling, updates, fallback</span></div>
+  <div class="method"><code>MetronomeApp/AudioSessionManager.swift</code> <span class="method-desc">&mdash; AVAudioSession: .mixWithOthers, interruptions</span></div>
+  <div class="method"><code>MetronomeApp/MetronomeAppIntents.swift</code> <span class="method-desc">&mdash; Widget intents: Toggle, Start, Stop, +/-</span></div>
+  <div class="method"><code>MetronomeApp/MetronomeApp/SharedMetronomeState.swift</code> <span class="method-desc">&mdash; UserDefaults app group, Darwin notifications</span></div>
+  <div class="method"><code>MetronomeApp/StateChangeObserver.swift</code> <span class="method-desc">&mdash; Darwin notification observer</span></div>
+  <div class="method"><code>MetronomeWidget/MetronomeWidget.swift</code> <span class="method-desc">&mdash; Lock screen + DI layout</span></div>
+  <div class="method"><code>OneEightyWatch Watch App/WatchSessionManager.swift</code> <span class="method-desc">&mdash; watchOS WCSession: commands, state receive</span></div>
+  <div class="method"><code>OneEightyWatch Watch App/ContentView.swift</code> <span class="method-desc">&mdash; Watch UI: SPM + 3 buttons</span></div>
+</div>
+
+</section>
+
+<div style="text-align:center; padding: 40px 0 20px; color: var(--text-muted); font-size: 13px;">
+  Generated from source &mdash; 180 Metronome Architecture Explorer
+</div>
+
+</div>
+
+<script>
+// Detail panels
+function showDetail(id) {
+  document.querySelectorAll('.detail-panel').forEach(p => p.classList.remove('visible'));
+  document.querySelectorAll('.arch-box').forEach(b => b.classList.remove('selected'));
+  const panel = document.getElementById('detail-' + id);
+  const box = document.querySelector(`[data-detail="${id}"]`);
+  if (panel) { panel.classList.add('visible'); }
+  if (box) { box.classList.add('selected'); }
+}
+
+// Flow tabs
+function showFlow(id) {
+  document.querySelectorAll('.flow-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.flow-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('flow-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// Edge case toggles
+function toggleEdge(header) {
+  header.classList.toggle('open');
+  header.nextElementSibling.classList.toggle('open');
+}
+
+// Nav active state
+document.querySelectorAll('nav a').forEach(link => {
+  link.addEventListener('click', function() {
+    document.querySelectorAll('nav a').forEach(l => l.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// Scroll spy
+window.addEventListener('scroll', () => {
+  const sections = ['architecture', 'happy-paths', 'edge-cases', 'state', 'docs'];
+  // Note: deployment diagram is within architecture section
+  let current = sections[0];
+  for (const id of sections) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top < 100) current = id;
+  }
+  document.querySelectorAll('nav a').forEach(l => {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+
+</body>
+</html>
