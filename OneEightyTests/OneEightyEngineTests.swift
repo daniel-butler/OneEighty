@@ -343,4 +343,35 @@ final class OneEightyEngineTests: XCTestCase {
         XCTAssertFalse(injectedEngine.isPlaying)
         injectedEngine.teardown()
     }
+
+    // MARK: - Setup Startup Race
+
+    func testSetupEmitsSingleStateChangeForRestoredBPM() {
+        // Simulate a prior session that saved BPM 210
+        let store = InMemoryStateStore()
+        store.bpm = 210
+        let engine = OneEightyEngine(store: store)
+
+        // Collect emissions during setup, skipping the CurrentValueSubject's
+        // hardcoded initial value (180, false) which fires at subscription time.
+        var emittedStates: [PlaybackState] = []
+        let cancellable = engine.statePublisher
+            .dropFirst()
+            .sink { emittedStates.append($0) }
+
+        engine.setup()
+
+        // setup() should emit exactly ONE state change with the restored BPM.
+        // Before fix: setupSubscriptions() fires the internal LiveActivityManager
+        // subscriber with stale BPM 180, then notifyStateChanged() corrects to 210.
+        // This external test can't observe the internal race, but it verifies the
+        // publisher emits exactly one update (not zero, not two) during setup.
+        XCTAssertEqual(emittedStates.count, 1,
+            "setup() should emit exactly one state change, not \(emittedStates.count)")
+        XCTAssertEqual(emittedStates.first?.bpm, 210,
+            "Emitted state should have restored BPM (210), not default (180)")
+
+        cancellable.cancel()
+        engine.teardown()
+    }
 }
