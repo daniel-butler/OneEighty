@@ -324,6 +324,8 @@ final class OneEightyEngine {
                     self.handlePlayCommand()
                 case .command(.stop):
                     self.handleStopCommand()
+                case .command(.adjustBPM(let delta)):
+                    self.adjustBPM(by: delta)
                 }
             }
             .store(in: &subscriptions)

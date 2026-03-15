@@ -10,6 +10,7 @@ import Combine
 enum StateStoreCommand: Equatable {
     case start
     case stop
+    case adjustBPM(Int)
 }
 
 enum StoreEvent: Equatable {

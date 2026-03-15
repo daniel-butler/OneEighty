@@ -19,6 +19,7 @@ private enum DarwinNotification {
     static let stateChanged = "com.danielbutler.OneEighty.stateChanged"
     static let commandStart = "com.danielbutler.OneEighty.command.start"
     static let commandStop = "com.danielbutler.OneEighty.command.stop"
+    static let commandAdjustBPM = "com.danielbutler.OneEighty.command.adjustBPM"
 }
 
 @MainActor
@@ -81,6 +82,10 @@ final class SharedStateStore: StateStore {
             postDarwinNotification(DarwinNotification.commandStart)
         case .stop:
             postDarwinNotification(DarwinNotification.commandStop)
+        case .adjustBPM(let delta):
+            let current = defaults.integer(forKey: "pendingBPMDelta")
+            defaults.set(current + delta, forKey: "pendingBPMDelta")
+            postDarwinNotification(DarwinNotification.commandAdjustBPM)
         }
     }
 
@@ -142,6 +147,24 @@ final class SharedStateStore: StateStore {
         CFNotificationCenterAddObserver(center, observer,
             stopCallback,
             DarwinNotification.commandStop as CFString,
+            nil, .deliverImmediately)
+
+        let adjustBPMCallback: CFNotificationCallback = { _, observer, _, _, _ in
+            guard let observer else { return }
+            let instance = Unmanaged<SharedStateStore>.fromOpaque(observer).takeUnretainedValue()
+            Task { @MainActor in
+                instance.defaults.synchronize()
+                let delta = instance.defaults.integer(forKey: "pendingBPMDelta")
+                instance.defaults.set(0, forKey: "pendingBPMDelta")
+                if delta != 0 {
+                    instance.externalChangesSubject.send(.command(.adjustBPM(delta)))
+                }
+            }
+        }
+
+        CFNotificationCenterAddObserver(center, observer,
+            adjustBPMCallback,
+            DarwinNotification.commandAdjustBPM as CFString,
             nil, .deliverImmediately)
     }
 
