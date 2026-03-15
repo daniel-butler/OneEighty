@@ -89,6 +89,68 @@ final class WatchSessionManagerTests: XCTestCase {
         XCTAssertEqual(session.bpm, 230, "Rapid increments should clamp at 230")
     }
 
+    // MARK: - Inbound Cooldown
+
+    func testIncrementSetsCoolingDown() {
+        session.incrementBPM()
+        XCTAssertTrue(session.isCoolingDown, "incrementBPM should activate cooldown")
+    }
+
+    func testDecrementSetsCoolingDown() {
+        session.decrementBPM()
+        XCTAssertTrue(session.isCoolingDown, "decrementBPM should activate cooldown")
+    }
+
+    func testCooldownExpiresAfterDelay() {
+        let expectation = expectation(description: "Cooldown expires")
+        session.incrementBPM()
+        XCTAssertTrue(session.isCoolingDown)
+
+        // Cooldown is 200ms — wait 300ms to be safe
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertFalse(session.isCoolingDown, "Cooldown should expire after 200ms")
+    }
+
+    func testApplyStateIgnoresBPMDuringCooldown() {
+        session.incrementBPM()
+        XCTAssertTrue(session.isCoolingDown)
+        let bpmAfterIncrement = session.bpm
+
+        // Simulate stale echo from phone
+        session.applyState(["bpm": 170, "isPlaying": false])
+        XCTAssertEqual(session.bpm, bpmAfterIncrement, "BPM should be ignored during cooldown")
+    }
+
+    func testApplyStateAcceptsIsPlayingDuringCooldown() {
+        session.incrementBPM()
+        XCTAssertTrue(session.isCoolingDown)
+        XCTAssertFalse(session.isPlaying)
+
+        // Play/stop should always be applied, even during cooldown
+        session.applyState(["bpm": 170, "isPlaying": true])
+        XCTAssertTrue(session.isPlaying, "isPlaying should be applied even during cooldown")
+    }
+
+    func testApplyStateAcceptsBPMAfterCooldownExpires() {
+        let expectation = expectation(description: "Cooldown expires")
+        session.incrementBPM()
+        XCTAssertTrue(session.isCoolingDown)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertFalse(session.isCoolingDown)
+
+        session.applyState(["bpm": 200, "isPlaying": false])
+        XCTAssertEqual(session.bpm, 200, "BPM should be applied after cooldown expires")
+    }
+
+    // MARK: - Rapid Operations (existing)
+
     func testRapidToggles() {
         // Even number of toggles should return to original state
         let initial = session.isPlaying

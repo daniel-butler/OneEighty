@@ -173,6 +173,15 @@ final class MetronomeEngine {
         notifyStateChanged()
     }
 
+    func adjustBPM(by delta: Int) {
+        let newBPM = min(Self.bpmRange.upperBound, max(Self.bpmRange.lowerBound, bpm + delta))
+        guard newBPM != bpm else { return }
+        bpm = newBPM
+        store.bpm = bpm
+        handleBPMChange()
+        notifyStateChanged()
+    }
+
     func setBPM(_ newBPM: Int) {
         let clamped = min(Self.bpmRange.upperBound, max(Self.bpmRange.lowerBound, newBPM))
         guard clamped != bpm else { return }

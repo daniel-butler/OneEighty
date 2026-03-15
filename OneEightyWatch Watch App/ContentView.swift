@@ -18,6 +18,8 @@ struct ContentView: View {
             Text("\(session.bpm)")
                 .font(.system(size: 52, weight: .bold, design: .rounded))
                 .contentTransition(.numericText())
+                .foregroundStyle(session.isCoolingDown ? .secondary : .primary)
+                .animation(.easeInOut(duration: 0.15), value: session.isCoolingDown)
                 .accessibilityIdentifier("bpmDisplay")
             Text("SPM")
                 .font(.caption)

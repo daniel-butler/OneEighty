@@ -377,6 +377,27 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(emittedStates.last?.isPlaying, false)
     }
 
+    // MARK: - 5. Watch Sync Debounce
+
+    func testBatchedBPMAdjustmentProducesSingleEcho() {
+        var emittedStates: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { emittedStates.append($0) }
+            .store(in: &cancellables)
+
+        // Simulate what the phone receives from a batched watch command:
+        // a single adjustBPM(by: 5) instead of 5 individual incrementBPM() calls
+        engine.adjustBPM(by: 5)
+
+        XCTAssertEqual(emittedStates.count, 1,
+            "Batched adjustBPM should produce a single state emission")
+        XCTAssertEqual(emittedStates.last?.bpm, 185,
+            "Single emission should contain the final BPM value")
+    }
+
+    // MARK: - 6. Engine Lifecycle
+
     func testEngineStateConsistentAfterMultipleSetupTeardownCycles() {
         // Teardown and re-setup with the same store (simulates app restart with persisted BPM)
         engine.setBPM(210)

@@ -18,13 +18,28 @@ final class PhoneSessionManager: NSObject {
     private let engine: MetronomeEngine
     private let launchTimestamp: TimeInterval
     private var cancellable: AnyCancellable?
+    private var echoDebounceTimer: Timer?
+    private var lastSentPlayingState: Bool?
 
     init(engine: MetronomeEngine) {
         self.engine = engine
         self.launchTimestamp = Date().timeIntervalSince1970
         super.init()
-        cancellable = engine.statePublisher.dropFirst().sink { [weak self] _ in
-            self?.sendStateToWatch()
+        cancellable = engine.statePublisher.dropFirst().sink { [weak self] state in
+            guard let self else { return }
+            // Play/stop changes bypass debounce — send immediately
+            if state.isPlaying != self.lastSentPlayingState {
+                self.echoDebounceTimer?.invalidate()
+                self.echoDebounceTimer = nil
+                self.lastSentPlayingState = state.isPlaying
+                self.sendStateToWatch()
+            } else {
+                // BPM-only changes: debounce 150ms
+                self.echoDebounceTimer?.invalidate()
+                self.echoDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
+                    self?.sendStateToWatch()
+                }
+            }
         }
     }
 
@@ -141,11 +156,12 @@ extension PhoneSessionManager: WCSessionDelegate {
             engine.incrementBPM()
         case "decrementBPM":
             engine.decrementBPM()
+        case "adjustBPM":
+            if let count = message["count"] as? Int {
+                engine.adjustBPM(by: count)
+            }
         default:
             logger.warning("Unknown command: \(command)")
         }
-
-        // Send updated state back to watch
-        sendStateToWatch()
     }
 }

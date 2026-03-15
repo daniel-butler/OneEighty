@@ -125,6 +125,58 @@ final class MetronomeEngineTests: XCTestCase {
         cancellable.cancel()
     }
 
+    // MARK: - adjustBPM(by:)
+
+    func testAdjustBPMByPositiveDelta() {
+        engine.setup()
+        engine.setBPM(180)
+        engine.adjustBPM(by: 5)
+        XCTAssertEqual(engine.bpm, 185)
+    }
+
+    func testAdjustBPMByNegativeDelta() {
+        engine.setup()
+        engine.setBPM(180)
+        engine.adjustBPM(by: -3)
+        XCTAssertEqual(engine.bpm, 177)
+    }
+
+    func testAdjustBPMClampsAtBounds() {
+        engine.setup()
+        engine.setBPM(228)
+        engine.adjustBPM(by: 10)
+        XCTAssertEqual(engine.bpm, 230, "Should clamp at upper bound")
+
+        engine.setBPM(152)
+        engine.adjustBPM(by: -10)
+        XCTAssertEqual(engine.bpm, 150, "Should clamp at lower bound")
+    }
+
+    func testAdjustBPMFiresSingleNotification() {
+        engine.setup()
+        engine.setBPM(180)
+        var callCount = 0
+        let cancellable = engine.statePublisher.dropFirst().sink { _ in callCount += 1 }
+
+        engine.adjustBPM(by: 5)
+        XCTAssertEqual(callCount, 1, "adjustBPM should fire exactly one notification")
+
+        cancellable.cancel()
+    }
+
+    func testAdjustBPMByZeroIsNoOp() {
+        engine.setup()
+        engine.setBPM(180)
+        var callCount = 0
+        let cancellable = engine.statePublisher.dropFirst().sink { _ in callCount += 1 }
+
+        engine.adjustBPM(by: 0)
+        XCTAssertEqual(engine.bpm, 180)
+        XCTAssertEqual(callCount, 0, "adjustBPM(by: 0) should not fire notification")
+
+        cancellable.cancel()
+    }
+
     // MARK: - PlaybackState
 
     func testPlaybackStateEquality() {

@@ -17,8 +17,12 @@ final class WatchSessionManager: NSObject {
     var bpm: Int = 180
     var isPlaying: Bool = false
     var isReachable: Bool = false
+    private(set) var isCoolingDown: Bool = false
 
     private var wcSession: WCSession?
+    private var pendingBPMDelta: Int = 0
+    private var batchTimer: Timer?
+    private var cooldownTimer: Timer?
 
     override init() {
         super.init()
@@ -49,7 +53,8 @@ final class WatchSessionManager: NSObject {
         if bpm < 230 {
             bpm += 1
         }
-        sendCommand("incrementBPM")
+        startCooldown()
+        batchBPMDelta(1)
     }
 
     func decrementBPM() {
@@ -57,19 +62,46 @@ final class WatchSessionManager: NSObject {
         if bpm > 150 {
             bpm -= 1
         }
-        sendCommand("decrementBPM")
+        startCooldown()
+        batchBPMDelta(-1)
     }
 
-    private func sendCommand(_ command: String) {
+    private func batchBPMDelta(_ delta: Int) {
+        pendingBPMDelta += delta
+        batchTimer?.invalidate()
+        batchTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.pendingBPMDelta != 0 else { return }
+                let delta = self.pendingBPMDelta
+                self.pendingBPMDelta = 0
+                self.sendCommand("adjustBPM", extra: ["count": delta])
+            }
+        }
+    }
+
+    private func startCooldown() {
+        isCoolingDown = true
+        cooldownTimer?.invalidate()
+        cooldownTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.isCoolingDown = false
+            }
+        }
+    }
+
+    private func sendCommand(_ command: String, extra: [String: Any] = [:]) {
         guard let session = wcSession else {
             logger.warning("No WCSession — command \(command) dropped")
             return
         }
 
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "command": command,
             "timestamp": Date().timeIntervalSince1970
         ]
+        for (key, value) in extra {
+            payload[key] = value
+        }
 
         if session.isReachable {
             // Immediate delivery — phone is active
@@ -92,14 +124,14 @@ final class WatchSessionManager: NSObject {
 
     // MARK: - State from Phone
 
-    private func applyState(_ message: [String: Any]) {
-        if let newBPM = message["bpm"] as? Int {
+    func applyState(_ message: [String: Any]) {
+        if let newBPM = message["bpm"] as? Int, !isCoolingDown {
             bpm = newBPM
         }
         if let newIsPlaying = message["isPlaying"] as? Bool {
             isPlaying = newIsPlaying
         }
-        logger.info("State updated — bpm=\(self.bpm), isPlaying=\(self.isPlaying)")
+        logger.info("State updated — bpm=\(self.bpm), isPlaying=\(self.isPlaying), coolingDown=\(self.isCoolingDown)")
     }
 }
 

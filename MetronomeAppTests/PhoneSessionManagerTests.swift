@@ -59,6 +59,12 @@ final class PhoneSessionManagerTests: XCTestCase {
         XCTAssertEqual(engine.bpm, 189)
     }
 
+    func testAdjustBPMCommand() {
+        engine.setBPM(180)
+        engine.adjustBPM(by: 7)
+        XCTAssertEqual(engine.bpm, 187, "adjustBPM should apply batched delta in one shot")
+    }
+
     // MARK: - Stale Command Filtering (Bug 4 fix)
 
     func testStaleTimestampDetection() {
