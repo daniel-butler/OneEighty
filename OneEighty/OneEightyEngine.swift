@@ -99,6 +99,7 @@ final class OneEightyEngine {
         store.volume = 0.4
         store.isPlaying = false
 
+        LiveActivityManager.shared.cleanupStaleActivities()
         setupAudioEngine()
         setupRemoteCommands()
         startObservingInterruptions()
@@ -114,6 +115,7 @@ final class OneEightyEngine {
         guard !isSetUp else { return }
         logger.info("ensureReady — background setup (preserving state)")
         store.synchronize()
+        LiveActivityManager.shared.cleanupStaleActivities()
         setupAudioEngine()
         setupRemoteCommands()
         startObservingInterruptions()
