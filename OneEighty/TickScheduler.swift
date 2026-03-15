@@ -119,7 +119,9 @@ final class TickScheduler {
         // Fire at half the look-ahead interval to ensure we always stay topped up.
         let interval = lookAheadSeconds / 2.0
         maintenanceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.scheduleAhead()
+            MainActor.assumeIsolated {
+                self?.scheduleAhead()
+            }
         }
     }
 }
