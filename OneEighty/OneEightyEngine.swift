@@ -39,9 +39,7 @@ final class OneEightyEngine {
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var audioBuffer: AVAudioPCMBuffer?
-    private var tickTimer: Timer?
-    private var bpmDebounceTimer: Timer?
-    private var pendingBPM: Int?
+    private var tickScheduler: TickScheduler?
     private var wasPlayingBeforeInterruption: Bool = false
 
     // MARK: - Cross-Process
@@ -262,10 +260,6 @@ final class OneEightyEngine {
 
     // MARK: - OneEighty Control
 
-    private func calculateInterval(bpm: Int) -> TimeInterval {
-        return 60.0 / Double(bpm)
-    }
-
     private func startOneEighty() {
         stopOneEighty()
 
@@ -284,44 +278,33 @@ final class OneEightyEngine {
 
         audioEngine.mainMixerNode.outputVolume = volume
 
-        let interval = calculateInterval(bpm: bpm)
-
-        playerNode.scheduleBuffer(audioBuffer)
         if !playerNode.isPlaying {
             playerNode.play()
         }
 
-        let capturedPlayerNode = playerNode
-        let capturedAudioBuffer = audioBuffer
-
-        tickTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
-            capturedPlayerNode.scheduleBuffer(capturedAudioBuffer)
-            if !capturedPlayerNode.isPlaying {
-                capturedPlayerNode.play()
-            }
-        }
+        let sampleRate = audioBuffer.format.sampleRate
+        let scheduler = TickScheduler(
+            playerNode: playerNode,
+            buffer: audioBuffer,
+            sampleRate: sampleRate,
+            bpm: bpm
+        )
+        self.tickScheduler = scheduler
+        scheduler.start()
     }
 
     private func stopOneEighty() {
-        tickTimer?.invalidate()
-        tickTimer = nil
-        playerNode?.stop()
+        tickScheduler?.stop()
+        tickScheduler = nil
+        // Safety: ensure player node is stopped even if no scheduler was active
+        if playerNode?.isPlaying == true {
+            playerNode?.stop()
+        }
     }
 
     private func handleBPMChange() {
         guard isPlaying else { return }
-
-        stopOneEighty()
-        bpmDebounceTimer?.invalidate()
-        pendingBPM = bpm
-
-        bpmDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self, self.pendingBPM != nil else { return }
-                self.startOneEighty()
-                self.pendingBPM = nil
-            }
-        }
+        tickScheduler?.updateBPM(bpm)
     }
 
     // MARK: - Shared State Observer

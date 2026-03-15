@@ -42,6 +42,12 @@ final class TickScheduler {
         self.bpm = bpm
     }
 
+    // nonisolated deinit prevents Swift from scheduling deallocation on the
+    // main actor via swift_task_deinitOnExecutorImpl, which avoids a
+    // TaskLocal.StopLookupScope crash in unit tests. Properties are already
+    // cleaned up by stop(); the deinit body is intentionally empty.
+    nonisolated deinit {}
+
     // MARK: - Public
 
     /// Pure function: computes samples between beats for a given BPM and sample rate.
