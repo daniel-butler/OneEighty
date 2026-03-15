@@ -14,6 +14,7 @@ final class OneEightyUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        app.launchArguments = ["--reset-state"]
         app.launch()
     }
 

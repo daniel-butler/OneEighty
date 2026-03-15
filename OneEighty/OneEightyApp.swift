@@ -38,6 +38,13 @@ struct OneEightyApp: App {
     @State private var phoneSession: PhoneSessionManager?
 
     init() {
+        if ProcessInfo.processInfo.arguments.contains("--reset-state") {
+            if let defaults = UserDefaults(suiteName: "group.com.danielbutler.OneEighty") {
+                defaults.removeObject(forKey: "bpm")
+                defaults.removeObject(forKey: "isPlaying")
+                defaults.removeObject(forKey: "volume")
+            }
+        }
         _ = AudioSessionManager.shared
     }
 
