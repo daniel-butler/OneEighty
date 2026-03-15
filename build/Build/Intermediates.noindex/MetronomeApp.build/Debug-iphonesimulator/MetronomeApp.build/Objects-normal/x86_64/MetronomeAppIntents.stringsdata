@@ -1,0 +1,88 @@
+{
+  "source": "/Users/danielbutler/code/metronome-app/MetronomeApp/MetronomeAppIntents.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Toggle Metronome",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "Toggles metronome playback on/off",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 45
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start Metronome",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "Starts the metronome playback",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop Metronome",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stops the metronome playback",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 81
+        }
+      },
+      {
+        "comment": "",
+        "key": "Increment SPM",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 96
+        }
+      },
+      {
+        "comment": "",
+        "key": "Increases SPM by 1",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 97
+        }
+      },
+      {
+        "comment": "",
+        "key": "Decrement SPM",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 115
+        }
+      },
+      {
+        "comment": "",
+        "key": "Decreases SPM by 1",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 116
+        }
+      }
+    ]
+  },
+  "version": 1
+}

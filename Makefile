@@ -2,11 +2,11 @@
 
 # Default simulator
 SIMULATOR ?= iPhone 17
-SCHEME = MetronomeApp
+SCHEME = OneEighty
 DESTINATION = 'platform=iOS Simulator,name=$(SIMULATOR)'
 
 help:
-	@echo "Metronome App - Make Commands"
+	@echo "OneEighty - Make Commands"
 	@echo ""
 	@echo "Available commands:"
 	@echo "  make test        - Run both unit and UI tests"
@@ -28,7 +28,7 @@ test-unit:
 	@xcodebuild test \
 		-scheme $(SCHEME) \
 		-destination $(DESTINATION) \
-		-only-testing:MetronomeAppTests \
+		-only-testing:OneEightyTests \
 		-parallel-testing-enabled NO
 
 test-ui:
@@ -36,13 +36,13 @@ test-ui:
 	@xcodebuild test \
 		-scheme $(SCHEME) \
 		-destination $(DESTINATION) \
-		-only-testing:MetronomeAppUITests \
+		-only-testing:OneEightyUITests \
 		-parallel-testing-enabled NO
 
 clean:
 	@echo "Cleaning build artifacts..."
 	@xcodebuild clean -scheme $(SCHEME) || true
-	@rm -rf ~/Library/Developer/Xcode/DerivedData/MetronomeApp-* || true
+	@rm -rf ~/Library/Developer/Xcode/DerivedData/OneEighty-* || true
 	@echo "Clean complete!"
 	@echo ""
 	@echo "Note: Run 'xcrun simctl erase all' to reset all simulators if tests fail"

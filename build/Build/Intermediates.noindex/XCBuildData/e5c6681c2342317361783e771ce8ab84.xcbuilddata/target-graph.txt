@@ -1,0 +1,10 @@
+Target dependency graph (5 targets)
+Target 'MetronomeApp' in project 'MetronomeApp'
+➜ Explicit dependency on target 'MetronomeWidgetExtension' in project 'MetronomeApp'
+➜ Explicit dependency on target 'OneEightyWatch Watch App' in project 'MetronomeApp'
+Target 'MetronomeWidgetExtension' in project 'MetronomeApp' (no dependencies)
+Target 'OneEightyWatch Watch AppUITests' in project 'MetronomeApp'
+➜ Explicit dependency on target 'OneEightyWatch Watch App' in project 'MetronomeApp'
+Target 'OneEightyWatch Watch AppTests' in project 'MetronomeApp'
+➜ Explicit dependency on target 'OneEightyWatch Watch App' in project 'MetronomeApp'
+Target 'OneEightyWatch Watch App' in project 'MetronomeApp' (no dependencies)

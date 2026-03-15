@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>12</integer>
+	<key>logs</key>
+	<dict>
+		<key>048A5DE2-6E61-4EC5-8470-11B7367933AB</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>048A5DE2-6E61-4EC5-8470-11B7367933AB.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>4</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>MetronomeApp project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>MetronomeApp</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Testing project MetronomeApp with scheme MetronomeApp</string>
+			<key>timeStartedRecording</key>
+			<real>795231593.74119794</real>
+			<key>timeStoppedRecording</key>
+			<real>795231599.35567105</real>
+			<key>title</key>
+			<string>Testing project MetronomeApp with scheme MetronomeApp</string>
+			<key>uniqueIdentifier</key>
+			<string>048A5DE2-6E61-4EC5-8470-11B7367933AB</string>
+		</dict>
+		<key>425426A7-D9C6-4C14-B6F9-3BB0AD228A4D</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>425426A7-D9C6-4C14-B6F9-3BB0AD228A4D.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>4</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>MetronomeApp project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>OneEightyWatch Watch App</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Testing project MetronomeApp with scheme OneEightyWatch Watch App</string>
+			<key>timeStartedRecording</key>
+			<real>795231660.04301596</real>
+			<key>timeStoppedRecording</key>
+			<real>795231670.23190105</real>
+			<key>title</key>
+			<string>Testing project MetronomeApp with scheme OneEightyWatch Watch App</string>
+			<key>uniqueIdentifier</key>
+			<string>425426A7-D9C6-4C14-B6F9-3BB0AD228A4D</string>
+		</dict>
+		<key>A89AEC81-F42E-45EB-A046-8182FA266E61</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>A89AEC81-F42E-45EB-A046-8182FA266E61.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>4</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>MetronomeApp project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>OneEightyWatch Watch App</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Testing project MetronomeApp with scheme OneEightyWatch Watch App</string>
+			<key>timeStartedRecording</key>
+			<real>795232003.77755499</real>
+			<key>timeStoppedRecording</key>
+			<real>795232007.61415303</real>
+			<key>title</key>
+			<string>Testing project MetronomeApp with scheme OneEightyWatch Watch App</string>
+			<key>uniqueIdentifier</key>
+			<string>A89AEC81-F42E-45EB-A046-8182FA266E61</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

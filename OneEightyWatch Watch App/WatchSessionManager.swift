@@ -9,7 +9,7 @@
 import WatchConnectivity
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.MetronomeApp.watchkitapp", category: "WatchSession")
+private let logger = Logger(subsystem: "com.danielbutler.OneEighty.watchkitapp", category: "WatchSession")
 
 @Observable
 @MainActor

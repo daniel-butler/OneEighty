@@ -1,0 +1,80 @@
+{
+  "buildCommand" : {
+    "command" : "build",
+    "skipDependencies" : false,
+    "style" : "buildAndRun"
+  },
+  "configuredTargets" : [
+    {
+      "guid" : "2f6a65424e891217ffa81447860f9c10d00b142ba508e21dc5dd0f8c106ba888"
+    },
+    {
+      "guid" : "2f6a65424e891217ffa81447860f9c10f2394903292b5bedf0659ad5313e6f04"
+    },
+    {
+      "guid" : "2f6a65424e891217ffa81447860f9c100c8556c6641814487a8c8418998b0232"
+    },
+    {
+      "guid" : "2f6a65424e891217ffa81447860f9c107813aab986bdfd3ed0697011d9156196"
+    }
+  ],
+  "containerPath" : "/Users/danielbutler/code/metronome-app/MetronomeApp.xcodeproj",
+  "continueBuildingAfterErrors" : false,
+  "dependencyScope" : "workspace",
+  "enableIndexBuildArena" : false,
+  "hideShellScriptEnvironment" : false,
+  "parameters" : {
+    "action" : "build",
+    "activeArchitecture" : "arm64",
+    "activeRunDestination" : {
+      "disableOnlyActiveArch" : false,
+      "platform" : "watchsimulator",
+      "sdk" : "watchsimulator26.2",
+      "sdkVariant" : "watchsimulator",
+      "supportedArchitectures" : [
+        "arm64"
+      ],
+      "targetArchitecture" : "arm64"
+    },
+    "arenaInfo" : {
+      "buildIntermediatesPath" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex",
+      "buildProductsPath" : "/Users/danielbutler/code/metronome-app/build/Build/Products",
+      "derivedDataPath" : "/Users/danielbutler/code/metronome-app/build",
+      "indexDataStoreFolderPath" : "/Users/danielbutler/code/metronome-app/build/Index.noindex/DataStore",
+      "indexEnableDataStore" : true,
+      "indexPCHPath" : "/Users/danielbutler/code/metronome-app/build/Index.noindex/PrecompiledHeaders",
+      "pchPath" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/PrecompiledHeaders"
+    },
+    "configurationName" : "Debug",
+    "overrides" : {
+      "commandLine" : {
+        "table" : {
+
+        }
+      },
+      "synthesized" : {
+        "table" : {
+          "ASSETCATALOG_FILTER_FOR_DEVICE_MODEL" : "Watch7,12",
+          "ASSETCATALOG_FILTER_FOR_DEVICE_OS_VERSION" : "26.2",
+          "ASSETCATALOG_FILTER_FOR_THINNING_DEVICE_CONFIGURATION" : "Watch7,12",
+          "BUILD_ACTIVE_RESOURCES_ONLY" : "YES",
+          "CLANG_COVERAGE_MAPPING" : "YES",
+          "CLANG_PROFILE_DATA_DIRECTORY" : "/Users/danielbutler/code/metronome-app/build/Build/ProfileData",
+          "ENABLE_PREVIEWS" : "NO",
+          "ENABLE_XOJIT_PREVIEWS" : "YES",
+          "ONLY_ACTIVE_ARCH" : "YES",
+          "TARGET_DEVICE_IDENTIFIER" : "7ECD6068-48B9-4617-B912-D03192F57813",
+          "TARGET_DEVICE_MODEL" : "Watch7,12",
+          "TARGET_DEVICE_OS_VERSION" : "26.2",
+          "TARGET_DEVICE_PLATFORM_NAME" : "watchsimulator"
+        }
+      }
+    }
+  },
+  "schemeCommand" : "test",
+  "showNonLoggedProgress" : true,
+  "useDryRun" : false,
+  "useImplicitDependencies" : true,
+  "useLegacyBuildLocations" : false,
+  "useParallelTargets" : true
+}
