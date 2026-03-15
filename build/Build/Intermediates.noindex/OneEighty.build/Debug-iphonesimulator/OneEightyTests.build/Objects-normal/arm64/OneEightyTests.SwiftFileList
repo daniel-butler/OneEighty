@@ -1,0 +1,12 @@
+/Users/danielbutler/code/metronome-app/OneEightyTests/ActivityUpdateTrackerTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/AudioSessionManagerTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/ContentViewTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/InMemoryStateStore.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/IntegrationTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/IntentBudgetTrackingTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/LiveActivityManagerTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/NowPlayingTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/OneEightyEngineTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/PhoneSessionManagerTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/SharedOneEightyStateTests.swift
+/Users/danielbutler/code/metronome-app/OneEightyTests/WatchSyncBounceBackTests.swift

@@ -1,0 +1,72 @@
+{
+  "source": "/Users/danielbutler/code/metronome-app/OneEighty/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Set SPM",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 36
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": "SPM",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 32
+        }
+      },
+      {
+        "comment": "",
+        "key": "150–230",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 37
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 39
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 40
+        }
+      },
+      {
+        "comment": "",
+        "key": "STOP",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 95
+        }
+      },
+      {
+        "comment": "",
+        "key": "START",
+        "location": {
+          "startingColumn": 50,
+          "startingLine": 95
+        }
+      }
+    ]
+  },
+  "version": 1
+}

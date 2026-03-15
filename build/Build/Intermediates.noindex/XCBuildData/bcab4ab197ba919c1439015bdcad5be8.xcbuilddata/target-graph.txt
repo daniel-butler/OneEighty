@@ -1,0 +1,10 @@
+Target dependency graph (5 targets)
+Target 'OneEightyUITests' in project 'OneEighty'
+➜ Explicit dependency on target 'OneEighty' in project 'OneEighty'
+Target 'OneEightyTests' in project 'OneEighty'
+➜ Explicit dependency on target 'OneEighty' in project 'OneEighty'
+Target 'OneEighty' in project 'OneEighty'
+➜ Explicit dependency on target 'OneEightyWidgetExtension' in project 'OneEighty'
+➜ Explicit dependency on target 'OneEightyWatch Watch App' in project 'OneEighty'
+Target 'OneEightyWatch Watch App' in project 'OneEighty' (no dependencies)
+Target 'OneEightyWidgetExtension' in project 'OneEighty' (no dependencies)

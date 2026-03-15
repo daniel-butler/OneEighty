@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests-primary.dia",
+    "emit-module-dependencies" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests-primary-emit-module.dia",
+    "pch" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests-primary.swiftdeps"
+  },
+  "/Users/danielbutler/code/metronome-app/OneEightyUITests/OneEightyUITests.swift" : {
+    "const-values" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests.swiftconstvalues",
+    "dependencies" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests.d",
+    "diagnostics" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests.dia",
+    "index-unit-output-path" : "/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests.o",
+    "llvm-bc" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests.bc",
+    "object" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests.o",
+    "swift-dependencies" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests.swiftdeps",
+    "swiftmodule" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITests~partial.swiftmodule"
+  },
+  "/Users/danielbutler/code/metronome-app/OneEightyUITests/OneEightyUITestsLaunchTests.swift" : {
+    "const-values" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests.swiftconstvalues",
+    "dependencies" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests.d",
+    "diagnostics" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests.dia",
+    "index-unit-output-path" : "/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests.o",
+    "llvm-bc" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests.bc",
+    "object" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests.o",
+    "swift-dependencies" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests.swiftdeps",
+    "swiftmodule" : "/Users/danielbutler/code/metronome-app/build/Build/Intermediates.noindex/OneEighty.build/Debug-iphonesimulator/OneEightyUITests.build/Objects-normal/arm64/OneEightyUITestsLaunchTests~partial.swiftmodule"
+  }
+}

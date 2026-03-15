@@ -109,8 +109,16 @@
 			membershipExceptions = (
 				ActivityUpdateTracker.swift,
 				OneEightyActivityAttributes.swift,
+				OneEightyIntents.swift,
 				SharedStateStore.swift,
 				StateStore.swift,
+			);
+			target = 6FCE596B2EFB75690083AC60 /* OneEightyWidgetExtension */;
+		};
+		6FCE598B2EFBA4C80083AC60 /* Exceptions for "OneEightyWidget" folder in "OneEightyWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
 			);
 			target = 6FCE596B2EFB75690083AC60 /* OneEightyWidgetExtension */;
 		};
@@ -153,6 +161,9 @@
 		};
 		6FCE59722EFB75690083AC60 /* OneEightyWidget */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6FCE598B2EFBA4C80083AC60 /* Exceptions for "OneEightyWidget" folder in "OneEightyWidgetExtension" target */,
+			);
 			path = OneEightyWidget;
 			sourceTree = "<group>";
 		};

@@ -69,14 +69,14 @@
 			<key>uniqueIdentifier</key>
 			<string>6C51FE7C-383F-4BBD-9E16-0F81DE704C63</string>
 		</dict>
-		<key>7863A14E-FD8C-4B7D-A7BA-A09C1096FB6F</key>
+		<key>858CAE88-628E-4C7A-8811-F23B656D026B</key>
 		<dict>
 			<key>auxiliaryLogUniqueIdentifier</key>
-			<string>425426A7-D9C6-4C14-B6F9-3BB0AD228A4D</string>
+			<string>968F9BA9-FF1B-4162-A9EA-B61518BABD83</string>
 			<key>auxiliaryObservable</key>
 			<dict>
 				<key>highLevelStatus</key>
-				<string>W</string>
+				<string>S</string>
 				<key>totalNumberOfAnalyzerIssues</key>
 				<integer>0</integer>
 				<key>totalNumberOfErrors</key>
@@ -84,7 +84,7 @@
 				<key>totalNumberOfTestFailures</key>
 				<integer>0</integer>
 				<key>totalNumberOfWarnings</key>
-				<integer>4</integer>
+				<integer>0</integer>
 			</dict>
 			<key>className</key>
 			<string>IDESchemeActionsInvocationRecord</string>
@@ -93,7 +93,7 @@
 			<key>domainType</key>
 			<string>com.apple.dt.unit.cocoaUnitTest</string>
 			<key>fileName</key>
-			<string>Test-OneEightyWatch Watch App-2026.03.14_21-41-00--0400.xcresult</string>
+			<string>Test-OneEighty-2026.03.14_22-17-37--0400.xcresult</string>
 			<key>hasAuxiliaryLog</key>
 			<true/>
 			<key>hasCoverageData</key>
@@ -103,9 +103,9 @@
 			<key>primaryObservable</key>
 			<dict>
 				<key>highLevelStatus</key>
-				<string>W</string>
+				<string>S</string>
 				<key>totalCodeCoverage</key>
-				<real>0.18313094847390876</real>
+				<real>0.68127333464334838</real>
 				<key>totalNumberOfAnalyzerIssues</key>
 				<integer>0</integer>
 				<key>totalNumberOfErrors</key>
@@ -113,87 +113,24 @@
 				<key>totalNumberOfTestFailures</key>
 				<integer>0</integer>
 				<key>totalNumberOfWarnings</key>
-				<integer>3</integer>
+				<integer>0</integer>
 			</dict>
 			<key>schemeIdentifier-containerName</key>
-			<string>MetronomeApp project</string>
+			<string>OneEighty project</string>
 			<key>schemeIdentifier-schemeName</key>
-			<string>OneEightyWatch Watch App</string>
+			<string>OneEighty</string>
 			<key>schemeIdentifier-sharedScheme</key>
 			<integer>1</integer>
 			<key>signature</key>
-			<string>Test OneEightyWatch Watch App</string>
+			<string>Test OneEighty</string>
 			<key>timeStartedRecording</key>
-			<real>795231660.04381394</real>
+			<real>795233857.22459304</real>
 			<key>timeStoppedRecording</key>
-			<real>795231727.011006</real>
+			<real>795233918.47952902</real>
 			<key>title</key>
-			<string>Test OneEightyWatch Watch App</string>
+			<string>Test OneEighty</string>
 			<key>uniqueIdentifier</key>
-			<string>7863A14E-FD8C-4B7D-A7BA-A09C1096FB6F</string>
-		</dict>
-		<key>C24011DE-EF30-48F3-8E54-E3180F6C89F1</key>
-		<dict>
-			<key>auxiliaryLogUniqueIdentifier</key>
-			<string>048A5DE2-6E61-4EC5-8470-11B7367933AB</string>
-			<key>auxiliaryObservable</key>
-			<dict>
-				<key>highLevelStatus</key>
-				<string>W</string>
-				<key>totalNumberOfAnalyzerIssues</key>
-				<integer>0</integer>
-				<key>totalNumberOfErrors</key>
-				<integer>0</integer>
-				<key>totalNumberOfTestFailures</key>
-				<integer>0</integer>
-				<key>totalNumberOfWarnings</key>
-				<integer>4</integer>
-			</dict>
-			<key>className</key>
-			<string>IDESchemeActionsInvocationRecord</string>
-			<key>documentTypeString</key>
-			<string>&lt;nil&gt;</string>
-			<key>domainType</key>
-			<string>com.apple.dt.unit.cocoaUnitTest</string>
-			<key>fileName</key>
-			<string>Test-MetronomeApp-2026.03.14_21-39-53--0400.xcresult</string>
-			<key>hasAuxiliaryLog</key>
-			<true/>
-			<key>hasCoverageData</key>
-			<true/>
-			<key>hasPrimaryLog</key>
-			<true/>
-			<key>primaryObservable</key>
-			<dict>
-				<key>highLevelStatus</key>
-				<string>W</string>
-				<key>totalCodeCoverage</key>
-				<real>0.67793279622715663</real>
-				<key>totalNumberOfAnalyzerIssues</key>
-				<integer>0</integer>
-				<key>totalNumberOfErrors</key>
-				<integer>0</integer>
-				<key>totalNumberOfTestFailures</key>
-				<integer>0</integer>
-				<key>totalNumberOfWarnings</key>
-				<integer>3</integer>
-			</dict>
-			<key>schemeIdentifier-containerName</key>
-			<string>MetronomeApp project</string>
-			<key>schemeIdentifier-schemeName</key>
-			<string>MetronomeApp</string>
-			<key>schemeIdentifier-sharedScheme</key>
-			<integer>1</integer>
-			<key>signature</key>
-			<string>Test MetronomeApp</string>
-			<key>timeStartedRecording</key>
-			<real>795231593.74205101</real>
-			<key>timeStoppedRecording</key>
-			<real>795231655.649652</real>
-			<key>title</key>
-			<string>Test MetronomeApp</string>
-			<key>uniqueIdentifier</key>
-			<string>C24011DE-EF30-48F3-8E54-E3180F6C89F1</string>
+			<string>858CAE88-628E-4C7A-8811-F23B656D026B</string>
 		</dict>
 	</dict>
 </dict>
