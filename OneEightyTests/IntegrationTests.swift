@@ -12,6 +12,18 @@ import XCTest
 @testable import OneEighty
 
 @MainActor
+private final class MockReconciliationSubscriber: StateSubscriber {
+    var confirmedState: PlaybackState?
+    var pushCount: Int = 0
+    var lastPushedState: PlaybackState?
+
+    func push(_ state: PlaybackState) {
+        pushCount += 1
+        lastPushedState = state
+    }
+}
+
+@MainActor
 final class IntegrationTests: XCTestCase {
 
     private var store: InMemoryStateStore!
@@ -377,7 +389,120 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(emittedStates.last?.isPlaying, false)
     }
 
-    // MARK: - 5. Watch Sync Debounce
+    // MARK: - 5. Delta Commands E2E
+
+    func testDeltaCommandWhilePlayingUpdatesEngineAndPublisher() {
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        var emittedStates: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { emittedStates.append($0) }
+            .store(in: &cancellables)
+
+        store.simulateExternalChange(.command(.adjustBPM(5)))
+
+        XCTAssertEqual(engine.bpm, 185, "Delta +5 from 180 should give 185")
+        XCTAssertTrue(engine.isPlaying, "Playback should continue after delta command")
+        XCTAssertEqual(emittedStates.last?.bpm, 185,
+                       "Publisher should emit the updated BPM for LiveActivityManager subscription")
+    }
+
+    func testRapidDeltaCommandsNoLostIncrements() {
+        for _ in 0..<10 {
+            store.simulateExternalChange(.command(.adjustBPM(1)))
+        }
+
+        XCTAssertEqual(engine.bpm, 190, "10x +1 deltas from 180 should give 190 — no lost increments")
+        XCTAssertEqual(store.bpm, 190, "Store should be synced with engine BPM")
+    }
+
+    func testDeltaCommandAndDirectBPMChangeDontConflict() {
+        engine.incrementBPM()
+        XCTAssertEqual(engine.bpm, 181)
+
+        store.simulateExternalChange(.command(.adjustBPM(1)))
+        XCTAssertEqual(engine.bpm, 182, "Direct increment + delta command should both apply")
+    }
+
+    func testDeltaCommandClampedAtBoundsWhilePlaying() {
+        engine.setBPM(228)
+        engine.togglePlayback()
+
+        store.simulateExternalChange(.command(.adjustBPM(5)))
+        XCTAssertEqual(engine.bpm, 230, "Should clamp at upper bound")
+        XCTAssertTrue(engine.isPlaying, "Playback should continue after clamped delta")
+    }
+
+    func testDeltaCommandPublisherEmitsForEachDelta() {
+        var emittedStates: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { emittedStates.append($0) }
+            .store(in: &cancellables)
+
+        store.simulateExternalChange(.command(.adjustBPM(3)))
+        store.simulateExternalChange(.command(.adjustBPM(-1)))
+
+        XCTAssertEqual(emittedStates.count, 2, "Each delta should emit a separate state")
+        XCTAssertEqual(emittedStates[0].bpm, 183, "First delta: 180+3=183")
+        XCTAssertEqual(emittedStates[1].bpm, 182, "Second delta: 183-1=182")
+    }
+
+    // MARK: - 6. Reconciliation E2E
+
+    func testReconciliationDetectsStaleConfirmedState() {
+        let subscriber = MockReconciliationSubscriber()
+        subscriber.confirmedState = PlaybackState(bpm: 175, isPlaying: true)
+
+        let currentState = PlaybackState(bpm: 185, isPlaying: true)
+        subscriber.reconcile(currentState: currentState)
+
+        XCTAssertEqual(subscriber.pushCount, 1, "Should push when confirmed is stale")
+        XCTAssertEqual(subscriber.lastPushedState?.bpm, 185,
+                       "Should push current engine state, not confirmed state")
+    }
+
+    func testReconciliationNoOpWhenSynced() {
+        let subscriber = MockReconciliationSubscriber()
+        let state = PlaybackState(bpm: 185, isPlaying: true)
+        subscriber.confirmedState = state
+
+        subscriber.reconcile(currentState: state)
+
+        XCTAssertEqual(subscriber.pushCount, 0, "Should not push when already in sync")
+    }
+
+    func testReconciliationAfterDeltaCommandSequence() {
+        let subscriber = MockReconciliationSubscriber()
+        // Simulate: confirmed state is behind because throttle coalesced updates
+        subscriber.confirmedState = PlaybackState(bpm: 181, isPlaying: true)
+
+        // Engine has advanced further via deltas
+        store.simulateExternalChange(.command(.adjustBPM(5)))
+        let currentState = PlaybackState(bpm: engine.bpm, isPlaying: engine.isPlaying)
+
+        subscriber.reconcile(currentState: currentState)
+
+        XCTAssertEqual(subscriber.pushCount, 1, "Should push because confirmed (181) != current (185)")
+        XCTAssertEqual(subscriber.lastPushedState?.bpm, 185)
+    }
+
+    func testReconciliationDetectsPlayStateMismatch() {
+        let subscriber = MockReconciliationSubscriber()
+        subscriber.confirmedState = PlaybackState(bpm: 180, isPlaying: false)
+
+        engine.togglePlayback()
+        let currentState = PlaybackState(bpm: engine.bpm, isPlaying: engine.isPlaying)
+
+        subscriber.reconcile(currentState: currentState)
+
+        XCTAssertEqual(subscriber.pushCount, 1, "Should push when isPlaying diverges")
+        XCTAssertEqual(subscriber.lastPushedState?.isPlaying, true)
+    }
+
+    // MARK: - 7. Watch Sync Debounce
 
     func testBatchedBPMAdjustmentProducesSingleEcho() {
         var emittedStates: [PlaybackState] = []
