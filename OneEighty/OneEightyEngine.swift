@@ -155,6 +155,7 @@ final class OneEightyEngine {
         logger.info("togglePlayback — currently isPlaying=\(self.isPlaying)")
         if isPlaying {
             isPlaying = false
+            wasPlayingBeforeInterruption = false
             stopOneEighty()
         } else {
             isPlaying = true
@@ -427,9 +428,12 @@ final class OneEightyEngine {
 
     @objc private func handleInterruptionEnded() {
         Task { @MainActor in
-            logger.info("Audio interruption ended — wasPlayingBefore=\(self.wasPlayingBeforeInterruption)")
+            logger.info("Audio interruption ended — wasPlayingBefore=\(self.wasPlayingBeforeInterruption), isPlaying=\(self.isPlaying)")
             self.isSessionInterrupted = false
-            guard self.wasPlayingBeforeInterruption else { return }
+            guard self.wasPlayingBeforeInterruption, !self.isPlaying else {
+                self.wasPlayingBeforeInterruption = false
+                return
+            }
             self.wasPlayingBeforeInterruption = false
             AudioSessionManager.shared.activate()
             self.isPlaying = true
@@ -443,7 +447,7 @@ final class OneEightyEngine {
     /// interruption will have a corresponding end interruption."
     @objc private func handleDidBecomeActive() {
         Task { @MainActor in
-            guard self.wasPlayingBeforeInterruption else { return }
+            guard self.wasPlayingBeforeInterruption, !self.isPlaying else { return }
             logger.info("didBecomeActive — recovering from interruption")
             self.wasPlayingBeforeInterruption = false
             self.isSessionInterrupted = false

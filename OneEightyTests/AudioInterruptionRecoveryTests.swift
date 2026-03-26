@@ -469,4 +469,219 @@ final class AudioInterruptionRecoveryTests: XCTestCase {
         XCTAssertTrue(engine.isPlaying)
         XCTAssertTrue(stateChanges.isEmpty, "No state change should be emitted — already recovered")
     }
+
+    // MARK: - 6. togglePlayback() Stop During Interruption
+    //
+    // togglePlayback() is the direct UI path (iOS app button, lock screen,
+    // Watch command). It must clear wasPlayingBeforeInterruption when stopping,
+    // just like handleStopCommand does for the external/widget path.
+
+    /// User taps STOP in the app while interrupted — interruption ended should NOT auto-resume.
+    func testTogglePlaybackStopDuringInterruptionPreventsAutoResume() async {
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        await postInterruptionBegan()
+        XCTAssertFalse(engine.isPlaying)
+
+        // User opens app, sees "START" (isPlaying is false during interruption).
+        // Taps START to resume manually.
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        // User changes their mind, taps STOP.
+        engine.togglePlayback()
+        XCTAssertFalse(engine.isPlaying)
+
+        // Interruption ends — should NOT auto-resume because user explicitly stopped.
+        await postInterruptionEnded()
+
+        XCTAssertFalse(engine.isPlaying, "Should not auto-resume after user explicitly toggled stop during interruption")
+    }
+
+    /// User taps STOP in the app while interrupted — didBecomeActive should NOT auto-resume.
+    func testTogglePlaybackStopDuringInterruptionPreventsForegroundResume() async {
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        await postInterruptionBegan()
+        XCTAssertFalse(engine.isPlaying)
+
+        // User manually starts then stops via togglePlayback
+        engine.togglePlayback() // start
+        engine.togglePlayback() // stop
+
+        // App goes background, comes back
+        await postDidBecomeActive()
+
+        XCTAssertFalse(engine.isPlaying, "Should not auto-resume via foreground recovery after user toggled stop")
+    }
+
+    /// Simple case: user taps STOP (not during interruption) — no auto-resume flags should linger.
+    func testTogglePlaybackStopClearsAutoResumeFlag() async {
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        // Interruption sets wasPlayingBeforeInterruption = true
+        await postInterruptionBegan()
+
+        // User opens app and taps stop directly
+        engine.togglePlayback() // starts (isPlaying was false)
+        engine.togglePlayback() // stops
+
+        // Verify: no auto-resume paths fire
+        await postInterruptionEnded()
+        XCTAssertFalse(engine.isPlaying, "interruptionEnded should not resume after togglePlayback stop")
+
+        await postDidBecomeActive()
+        XCTAssertFalse(engine.isPlaying, "didBecomeActive should not resume after togglePlayback stop")
+    }
+
+    // MARK: - 7. User Starts Playing During Interruption
+    //
+    // If the user manually starts playing while the session is interrupted,
+    // the interruption-ended handler should not restart the audio (it's
+    // already playing). Doing so would cause an audio glitch.
+
+    /// User manually starts during interruption — interruptionEnded should not double-start.
+    func testManualStartDuringInterruptionPreventsDoubleStart() async {
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        await postInterruptionBegan()
+        XCTAssertFalse(engine.isPlaying)
+
+        // User manually starts
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        var stateChanges: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { stateChanges.append($0) }
+            .store(in: &cancellables)
+
+        // Interruption ends — engine is already playing
+        await postInterruptionEnded()
+
+        XCTAssertTrue(engine.isPlaying, "Should still be playing")
+        // Should NOT emit a redundant state change — already playing
+        let playingEmissions = stateChanges.filter { $0.isPlaying }
+        XCTAssertEqual(playingEmissions.count, 0, "Should not emit redundant playing state — already playing")
+    }
+
+    /// User manually starts during interruption — didBecomeActive should not double-start.
+    func testManualStartDuringInterruptionPreventsForegroundDoubleStart() async {
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        await postInterruptionBegan()
+        XCTAssertFalse(engine.isPlaying)
+
+        // User manually starts
+        engine.togglePlayback()
+        XCTAssertTrue(engine.isPlaying)
+
+        var stateChanges: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { stateChanges.append($0) }
+            .store(in: &cancellables)
+
+        await postDidBecomeActive()
+
+        XCTAssertTrue(engine.isPlaying)
+        let playingEmissions = stateChanges.filter { $0.isPlaying }
+        XCTAssertEqual(playingEmissions.count, 0, "Should not emit redundant playing state on foreground")
+    }
+
+    // MARK: - 8. Stop State Consistency Across Surfaces
+    //
+    // Every stop path should leave engine, store, and publisher in the same state.
+
+    /// Stop via togglePlayback (iOS app / lock screen / Watch) — full state consistency.
+    func testStopViaTogglePlaybackStateConsistency() {
+        engine.togglePlayback() // start
+        engine.togglePlayback() // stop
+
+        XCTAssertFalse(engine.isPlaying, "Engine should be stopped")
+        XCTAssertFalse(store.isPlaying, "Store should be stopped")
+    }
+
+    /// Stop via external command (widget / Live Activity) — full state consistency.
+    func testStopViaExternalCommandStateConsistency() {
+        engine.togglePlayback() // start
+
+        store.simulateExternalChange(.command(.stop))
+
+        XCTAssertFalse(engine.isPlaying, "Engine should be stopped")
+        XCTAssertFalse(store.isPlaying, "Store should be stopped")
+    }
+
+    /// Stop via togglePlayback and external command produce identical publisher emissions.
+    func testStopEmissionsIdenticalAcrossSurfaces() {
+        // Path A: togglePlayback
+        engine.togglePlayback() // start
+        var toggleStates: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { toggleStates.append($0) }
+            .store(in: &cancellables)
+        engine.togglePlayback() // stop
+        cancellables.removeAll()
+
+        // Path B: external stop command
+        engine.togglePlayback() // start again
+        var commandStates: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { commandStates.append($0) }
+            .store(in: &cancellables)
+        store.simulateExternalChange(.command(.stop))
+
+        // Both should emit exactly one stopped state with the same BPM
+        XCTAssertEqual(toggleStates.count, 1)
+        XCTAssertEqual(commandStates.count, 1)
+        XCTAssertEqual(toggleStates.last?.isPlaying, false)
+        XCTAssertEqual(commandStates.last?.isPlaying, false)
+        XCTAssertEqual(toggleStates.last?.bpm, commandStates.last?.bpm)
+    }
+
+    // MARK: - 9. Watch Stop Echo Round-Trip
+    //
+    // When the Watch sends a stop command, the phone should echo back
+    // exactly one state update with isPlaying=false.
+
+    /// Stop produces exactly one publisher emission (which drives the Watch echo).
+    func testStopProducesSingleEcho() {
+        engine.togglePlayback() // start
+
+        var echoedStates: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { echoedStates.append($0) }
+            .store(in: &cancellables)
+
+        // Simulate Watch sending "toggle" (stop)
+        engine.togglePlayback()
+
+        XCTAssertEqual(echoedStates.count, 1, "Stop should produce exactly one echo")
+        XCTAssertEqual(echoedStates.last?.isPlaying, false, "Echo should show stopped")
+    }
+
+    /// Start then stop produces exactly two echoes (play, then stop).
+    func testStartStopProducesExactlyTwoEchoes() {
+        var echoedStates: [PlaybackState] = []
+        engine.statePublisher
+            .dropFirst()
+            .sink { echoedStates.append($0) }
+            .store(in: &cancellables)
+
+        engine.togglePlayback() // start
+        engine.togglePlayback() // stop
+
+        XCTAssertEqual(echoedStates.count, 2, "Start+stop should produce exactly two echoes")
+        XCTAssertEqual(echoedStates[0].isPlaying, true)
+        XCTAssertEqual(echoedStates[1].isPlaying, false)
+    }
 }
