@@ -14,12 +14,18 @@ import os
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "PhoneSession")
 
 @MainActor
-final class PhoneSessionManager: NSObject {
+final class PhoneSessionManager: NSObject, StateSubscriber {
     private let engine: OneEightyEngine
     private let launchTimestamp: TimeInterval
     private var cancellable: AnyCancellable?
     private var echoDebounceTimer: Timer?
     private var lastSentPlayingState: Bool?
+
+    private(set) var confirmedState: PlaybackState?
+
+    func push(_ state: PlaybackState) {
+        sendStateToWatch()
+    }
 
     init(engine: OneEightyEngine) {
         self.engine = engine
@@ -74,7 +80,13 @@ final class PhoneSessionManager: NSObject {
 
         // Also send immediate message when reachable for live updates.
         if WCSession.default.isReachable {
-            WCSession.default.sendMessage(state, replyHandler: nil) { error in
+            WCSession.default.sendMessage(state, replyHandler: { [weak self] reply in
+                Task { @MainActor in
+                    if let bpm = reply["bpm"] as? Int, let isPlaying = reply["isPlaying"] as? Bool {
+                        self?.confirmedState = PlaybackState(bpm: bpm, isPlaying: isPlaying)
+                    }
+                }
+            }) { error in
                 logger.error("sendMessage failed: \(error.localizedDescription)")
             }
             logger.info("Sent state to watch — bpm=\(self.engine.bpm), isPlaying=\(self.engine.isPlaying)")
