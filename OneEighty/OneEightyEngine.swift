@@ -78,6 +78,10 @@ final class OneEightyEngine {
                 self?.updateNowPlaying()
             }
             .store(in: &subscriptions)
+        LiveActivityManager.shared.setStateProvider { [weak self] in
+            guard let self else { return PlaybackState(bpm: 180, isPlaying: false) }
+            return PlaybackState(bpm: self.bpm, isPlaying: self.isPlaying)
+        }
     }
 
     // MARK: - Setup / Teardown

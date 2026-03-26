@@ -91,67 +91,6 @@ final class LiveActivityManagerTests: XCTestCase {
         }
     }
 
-    // MARK: - Duplicate Push Suppression
-
-    /// Identical consecutive state should not produce a second activity push
-    nonisolated func testIdenticalConsecutiveUpdatesProduceSinglePush() async {
-        await MainActor.run {
-            let manager = LiveActivityManager.shared
-            manager.resetForTesting()
-
-            // Critical update — pushes immediately (creates activity via startActivity)
-            manager.updateActivity(bpm: 180, isPlaying: true)
-        }
-
-        try? await Task.sleep(for: .milliseconds(400))
-
-        await MainActor.run {
-            let manager = LiveActivityManager.shared
-            let countAfterFirst = manager.tracker.totalUpdateCount
-            XCTAssertGreaterThan(countAfterFirst, 0, "First update should have been pushed")
-
-            // Identical state, normal priority — should be suppressed by dedup
-            manager.updateActivity(bpm: 180, isPlaying: true)
-        }
-
-        try? await Task.sleep(for: .milliseconds(400))
-
-        await MainActor.run {
-            let manager = LiveActivityManager.shared
-            XCTAssertEqual(manager.tracker.totalUpdateCount, 1,
-                           "Identical state should be suppressed by dedup")
-        }
-    }
-
-    /// Different BPM after initial push should NOT be suppressed
-    nonisolated func testDifferentBPMNotSuppressedByDedup() async {
-        await MainActor.run {
-            let manager = LiveActivityManager.shared
-            manager.resetForTesting()
-
-            manager.updateActivity(bpm: 180, isPlaying: true)
-        }
-
-        try? await Task.sleep(for: .milliseconds(400))
-
-        await MainActor.run {
-            let manager = LiveActivityManager.shared
-            let countAfterFirst = manager.tracker.totalUpdateCount
-            XCTAssertGreaterThan(countAfterFirst, 0, "First update should have been pushed")
-
-            // Different BPM — should produce a new push
-            manager.updateActivity(bpm: 181, isPlaying: true)
-        }
-
-        try? await Task.sleep(for: .milliseconds(400))
-
-        await MainActor.run {
-            let manager = LiveActivityManager.shared
-            XCTAssertEqual(manager.tracker.totalUpdateCount, 2,
-                           "Different BPM should not be suppressed")
-        }
-    }
-
     nonisolated func testResetClearsLastSentState() async {
         await MainActor.run {
             let manager = LiveActivityManager.shared

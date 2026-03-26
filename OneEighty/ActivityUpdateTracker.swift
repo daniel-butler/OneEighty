@@ -48,26 +48,6 @@ final class ActivityUpdateTracker {
         return updateTimestamps.filter { $0 > oneHourAgo }.count
     }
 
-    // MARK: - Delivery confirmation tracking
-
-    private(set) var hasPendingUpdate: Bool = false
-    private(set) var pendingSentTime: Date?
-
-    func markUpdateSent(at date: Date = Date()) {
-        hasPendingUpdate = true
-        pendingSentTime = date
-    }
-
-    func markUpdateConfirmed() {
-        hasPendingUpdate = false
-        pendingSentTime = nil
-    }
-
-    func isPendingUpdateStale(at date: Date = Date(), timeout: TimeInterval = 2.0) -> Bool {
-        guard hasPendingUpdate, let sentTime = pendingSentTime else { return false }
-        return date.timeIntervalSince(sentTime) > timeout
-    }
-
     func effectiveInterval(at date: Date = Date()) -> TimeInterval {
         let hourlyCount = updatesInLastHour(relativeTo: date)
         let ratio = Double(hourlyCount) / Double(budgetWarningThreshold)
@@ -82,8 +62,6 @@ final class ActivityUpdateTracker {
     func reset() {
         updateTimestamps.removeAll()
         totalUpdateCount = 0
-        hasPendingUpdate = false
-        pendingSentTime = nil
         logger.info("Tracker reset")
     }
 
