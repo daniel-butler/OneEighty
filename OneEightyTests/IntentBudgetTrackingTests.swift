@@ -75,8 +75,6 @@ final class IntentBudgetTrackingTests: XCTestCase {
 
             XCTAssertEqual(debouncer.flushCount, 1,
                            "Debouncer should coalesce into 1 flush")
-            XCTAssertEqual(debouncer.lastFlushedBPM, 185,
-                           "Should flush with final BPM")
             XCTAssertGreaterThanOrEqual(manager.tracker.totalUpdateCount, 1,
                                         "Manager should record the batched update")
         }

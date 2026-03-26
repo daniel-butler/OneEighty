@@ -10,8 +10,6 @@ final class IntentActivityDebouncer {
 
     let batchInterval: TimeInterval
     private(set) var flushCount: Int = 0
-    private(set) var lastFlushedBPM: Int?
-    private(set) var lastFlushedIsPlaying: Bool?
 
     private var batchTimer: Timer?
     private var pendingBPM: Int?
@@ -59,16 +57,7 @@ final class IntentActivityDebouncer {
     }
 
     private func push(bpm: Int, isPlaying: Bool) {
-        if let lastBPM = lastFlushedBPM, let lastPlaying = lastFlushedIsPlaying,
-           lastBPM == bpm, lastPlaying == isPlaying {
-            logger.info("Dedup — skipping identical state bpm=\(bpm), isPlaying=\(isPlaying)")
-            return
-        }
-
-        lastFlushedBPM = bpm
-        lastFlushedIsPlaying = isPlaying
         flushCount += 1
-
         logger.info("Flushing update #\(self.flushCount) — bpm=\(bpm), isPlaying=\(isPlaying)")
 
         if let handler = updateHandler {
@@ -89,8 +78,6 @@ final class IntentActivityDebouncer {
         batchTimer = nil
         pendingBPM = nil
         pendingIsPlaying = nil
-        lastFlushedBPM = nil
-        lastFlushedIsPlaying = nil
         flushCount = 0
         // Note: updateHandler is structural wiring, not test state — don't clear it
     }

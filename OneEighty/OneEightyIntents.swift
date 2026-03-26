@@ -70,14 +70,12 @@ struct IncrementBPMIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let store = SharedStateStore.shared
-        let currentBPM = store.bpm
-        logger.info("IncrementBPMIntent — current=\(currentBPM)")
-        if currentBPM < 230 {
-            let newBPM = currentBPM + 1
-            store.bpm = newBPM
-            let isPlaying = store.isPlaying
-            IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
-        }
+        logger.info("IncrementBPMIntent — posting adjustBPM(+1)")
+        store.postCommand(.adjustBPM(1))
+        // Widget extension fallback: estimate new BPM for direct ActivityKit push
+        let newBPM = min(230, store.bpm + 1)
+        let isPlaying = store.isPlaying
+        IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
         return .result()
     }
 }
@@ -89,14 +87,12 @@ struct DecrementBPMIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let store = SharedStateStore.shared
-        let currentBPM = store.bpm
-        logger.info("DecrementBPMIntent — current=\(currentBPM)")
-        if currentBPM > 150 {
-            let newBPM = currentBPM - 1
-            store.bpm = newBPM
-            let isPlaying = store.isPlaying
-            IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
-        }
+        logger.info("DecrementBPMIntent — posting adjustBPM(-1)")
+        store.postCommand(.adjustBPM(-1))
+        // Widget extension fallback: estimate new BPM for direct ActivityKit push
+        let newBPM = max(150, store.bpm - 1)
+        let isPlaying = store.isPlaying
+        IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
         return .result()
     }
 }

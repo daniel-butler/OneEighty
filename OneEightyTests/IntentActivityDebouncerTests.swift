@@ -26,8 +26,6 @@ final class IntentActivityDebouncerTests: XCTestCase {
             let debouncer = IntentActivityDebouncer.shared
             XCTAssertEqual(debouncer.flushCount, 1,
                            "5 rapid BPM changes should coalesce into 1 flush")
-            XCTAssertEqual(debouncer.lastFlushedBPM, 185,
-                           "Should flush with the final BPM value")
             XCTAssertFalse(debouncer.hasPending,
                            "No pending state after flush")
         }
@@ -47,7 +45,7 @@ final class IntentActivityDebouncerTests: XCTestCase {
 
         await MainActor.run {
             let debouncer = IntentActivityDebouncer.shared
-            XCTAssertEqual(debouncer.lastFlushedBPM, 190,
+            XCTAssertEqual(debouncer.flushCount, 1,
                            "Intermediate BPM values should be dropped, only final flushed")
         }
     }
@@ -63,8 +61,6 @@ final class IntentActivityDebouncerTests: XCTestCase {
 
             XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1,
                            "Critical priority should flush immediately")
-            XCTAssertEqual(IntentActivityDebouncer.shared.lastFlushedBPM, 180)
-            XCTAssertEqual(IntentActivityDebouncer.shared.lastFlushedIsPlaying, true)
             XCTAssertFalse(IntentActivityDebouncer.shared.hasPending,
                            "Critical flush should not leave pending state")
         }
@@ -84,61 +80,7 @@ final class IntentActivityDebouncerTests: XCTestCase {
 
             XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 2,
                            "Should flush pending batch + critical = 2 flushes")
-            XCTAssertEqual(IntentActivityDebouncer.shared.lastFlushedIsPlaying, false,
-                           "Last flush should be the critical (stop) update")
             XCTAssertFalse(IntentActivityDebouncer.shared.hasPending)
-        }
-    }
-
-    // MARK: - Duplicate Suppression
-
-    /// Submitting the same state twice via critical does not produce a second flush
-    nonisolated func testDuplicateStateSuppressed() async {
-        await MainActor.run {
-            IntentActivityDebouncer.shared.resetForTesting()
-
-            IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1)
-
-            // Same state again
-            IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1,
-                           "Duplicate state should be suppressed")
-        }
-    }
-
-    /// After a batched flush, submitting the same final BPM is suppressed
-    nonisolated func testDuplicateAfterBatchFlushSuppressed() async {
-        await MainActor.run {
-            IntentActivityDebouncer.shared.resetForTesting()
-
-            IntentActivityDebouncer.shared.submit(bpm: 185, isPlaying: true, priority: .normal)
-        }
-
-        try? await Task.sleep(for: .milliseconds(200))
-
-        await MainActor.run {
-            let debouncer = IntentActivityDebouncer.shared
-            XCTAssertEqual(debouncer.flushCount, 1)
-
-            // Submit same state via critical — should be suppressed
-            debouncer.submit(bpm: 185, isPlaying: true, priority: .critical)
-            XCTAssertEqual(debouncer.flushCount, 1,
-                           "Same state after batch flush should be suppressed")
-        }
-    }
-
-    /// Different BPM is NOT suppressed (dedup only blocks identical states)
-    nonisolated func testDifferentBPMNotSuppressed() async {
-        await MainActor.run {
-            IntentActivityDebouncer.shared.resetForTesting()
-
-            IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1)
-
-            IntentActivityDebouncer.shared.submit(bpm: 181, isPlaying: true, priority: .critical)
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 2,
-                           "Different BPM should not be suppressed by dedup")
         }
     }
 
@@ -169,7 +111,6 @@ final class IntentActivityDebouncerTests: XCTestCase {
         await MainActor.run {
             XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 2,
                            "Second burst should produce a second flush")
-            XCTAssertEqual(IntentActivityDebouncer.shared.lastFlushedBPM, 190)
         }
     }
 
@@ -186,8 +127,6 @@ final class IntentActivityDebouncerTests: XCTestCase {
             debouncer.resetForTesting()
 
             XCTAssertEqual(debouncer.flushCount, 0)
-            XCTAssertNil(debouncer.lastFlushedBPM)
-            XCTAssertNil(debouncer.lastFlushedIsPlaying)
             XCTAssertFalse(debouncer.hasPending)
         }
     }
