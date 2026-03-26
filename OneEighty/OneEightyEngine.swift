@@ -9,6 +9,7 @@
 import AVFoundation
 import Combine
 import MediaPlayer
+import UIKit
 import os
 
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "OneEightyEngine")
@@ -41,6 +42,7 @@ final class OneEightyEngine {
     private var audioBuffer: AVAudioPCMBuffer?
     private var tickScheduler: TickScheduler?
     private var wasPlayingBeforeInterruption: Bool = false
+    private var isSessionInterrupted: Bool = false
 
     // MARK: - Cross-Process
 
@@ -367,6 +369,9 @@ final class OneEightyEngine {
     @MainActor
     private func handleStopCommand() {
         logger.info("handleStopCommand — currently isPlaying=\(self.isPlaying)")
+        // Clear auto-resume intent — user explicitly wants to stop,
+        // even if we're in the middle of an interruption.
+        wasPlayingBeforeInterruption = false
         guard isPlaying else { return }
         isPlaying = false
         store.isPlaying = false
@@ -389,17 +394,29 @@ final class OneEightyEngine {
             name: .audioInterruptionEnded,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
     }
 
     private func stopObservingInterruptions() {
         NotificationCenter.default.removeObserver(self, name: .audioInterruptionBegan, object: nil)
         NotificationCenter.default.removeObserver(self, name: .audioInterruptionEnded, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
     @objc private func handleInterruptionBegan() {
         Task { @MainActor in
-            logger.info("Audio interrupted — wasPlaying=\(self.isPlaying)")
-            self.wasPlayingBeforeInterruption = self.isPlaying
+            logger.info("Audio interrupted — wasPlaying=\(self.isPlaying), alreadyInterrupted=\(self.isSessionInterrupted)")
+            // Only capture wasPlaying on the first began — a duplicate began
+            // would see isPlaying=false and overwrite to false, losing the resume intent.
+            if !self.isSessionInterrupted {
+                self.wasPlayingBeforeInterruption = self.isPlaying
+            }
+            self.isSessionInterrupted = true
             guard self.isPlaying else { return }
             self.isPlaying = false
             self.store.isPlaying = false
@@ -411,8 +428,25 @@ final class OneEightyEngine {
     @objc private func handleInterruptionEnded() {
         Task { @MainActor in
             logger.info("Audio interruption ended — wasPlayingBefore=\(self.wasPlayingBeforeInterruption)")
+            self.isSessionInterrupted = false
             guard self.wasPlayingBeforeInterruption else { return }
             self.wasPlayingBeforeInterruption = false
+            AudioSessionManager.shared.activate()
+            self.isPlaying = true
+            self.store.isPlaying = true
+            self.startOneEighty()
+            self.notifyStateChanged()
+        }
+    }
+
+    /// Foreground recovery — Apple docs: "There is no guarantee that a begin
+    /// interruption will have a corresponding end interruption."
+    @objc private func handleDidBecomeActive() {
+        Task { @MainActor in
+            guard self.wasPlayingBeforeInterruption else { return }
+            logger.info("didBecomeActive — recovering from interruption")
+            self.wasPlayingBeforeInterruption = false
+            self.isSessionInterrupted = false
             AudioSessionManager.shared.activate()
             self.isPlaying = true
             self.store.isPlaying = true

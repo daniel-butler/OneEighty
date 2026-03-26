@@ -56,13 +56,9 @@ final class AudioSessionManager {
         case .began:
             NotificationCenter.default.post(name: .audioInterruptionBegan, object: nil)
         case .ended:
-            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else {
-                return
-            }
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if options.contains(.shouldResume) {
-                NotificationCenter.default.post(name: .audioInterruptionEnded, object: nil)
-            }
+            // Always resume — OneEighty is a metronome, not a media player.
+            // Apple docs: non-media apps should ignore .shouldResume.
+            NotificationCenter.default.post(name: .audioInterruptionEnded, object: nil)
         @unknown default:
             break
         }
