@@ -128,4 +128,26 @@ final class AppGroupPlaybackStore: PlaybackStore {
     deinit {
         CFNotificationCenterRemoveEveryObserver(CFNotificationCenterGetDarwinNotifyCenter(), observerPointer)
     }
+
+    // MARK: - Live Activity coordination
+
+    func claimActivityPush(version: UInt64, at date: Date) -> Bool {
+        ioQueue.sync {
+            let last = UInt64(defaults.integer(forKey: "lastPushedActivityVersion"))
+            guard version > last else { return false }
+            defaults.set(Int(version), forKey: "lastPushedActivityVersion")
+            var stamps = (defaults.array(forKey: "activityPushStamps") as? [Double]) ?? []
+            stamps.append(date.timeIntervalSince1970)
+            stamps = stamps.filter { $0 > date.timeIntervalSince1970 - 3600 }
+            defaults.set(stamps, forKey: "activityPushStamps")
+            return true
+        }
+    }
+
+    func activityPushesInLastHour(at date: Date) -> Int {
+        ioQueue.sync {
+            let stamps = (defaults.array(forKey: "activityPushStamps") as? [Double]) ?? []
+            return stamps.filter { $0 > date.timeIntervalSince1970 - 3600 }.count
+        }
+    }
 }
