@@ -11,70 +11,44 @@ import os
 
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "Intents")
 
-struct ToggleOneEightyIntent: AppIntent {
+struct ToggleOneEightyIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Toggle OneEighty"
     static var description = IntentDescription("Toggles metronome playback on/off")
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        // NOTE: temporary minimal patch — this intent is not yet migrated to
-        // AppGroupPlaybackStore (that's Task 12). It's routed through
-        // AppGroupPlaybackStore here only to keep the target compiling after
-        // IntentActivityDebouncer's deletion in Task 11.
-        let sharedStore = SharedStateStore.shared
-        let wasPlaying = sharedStore.isPlaying
-        let nowPlaying = !wasPlaying
-        logger.info("ToggleOneEightyIntent — wasPlaying=\(wasPlaying), nowPlaying=\(nowPlaying)")
-
-        sharedStore.isPlaying = nowPlaying
-
         let store = AppGroupPlaybackStore.shared
-        store.mutate { $0.isPlaying = nowPlaying }
+        store.mutate { $0.isPlaying.toggle() }
+        logger.info("ToggleOneEightyIntent — isPlaying=\(store.state.isPlaying)")
         LiveActivityManager.shared.apply(store.state)
-
-        sharedStore.postCommand(nowPlaying ? .start : .stop)
         return .result()
     }
 }
 
-struct StartOneEightyIntent: AppIntent {
+struct StartOneEightyIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Start OneEighty"
     static var description = IntentDescription("Starts the metronome playback")
 
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StartOneEightyIntent.perform()")
-        // NOTE: temporary minimal patch — see ToggleOneEightyIntent. Full
-        // migration to AppGroupPlaybackStore is Task 12.
-        let sharedStore = SharedStateStore.shared
-        sharedStore.isPlaying = true
-
         let store = AppGroupPlaybackStore.shared
         store.mutate { $0.isPlaying = true }
         LiveActivityManager.shared.apply(store.state)
-
-        sharedStore.postCommand(.start)
         return .result()
     }
 }
 
-struct StopOneEightyIntent: AppIntent {
+struct StopOneEightyIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Stop OneEighty"
     static var description = IntentDescription("Stops the metronome playback")
 
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StopOneEightyIntent.perform()")
-        // NOTE: temporary minimal patch — see ToggleOneEightyIntent. Full
-        // migration to AppGroupPlaybackStore is Task 12.
-        let sharedStore = SharedStateStore.shared
-        sharedStore.isPlaying = false
-
         let store = AppGroupPlaybackStore.shared
         store.mutate { $0.isPlaying = false }
         LiveActivityManager.shared.apply(store.state)
-
-        sharedStore.postCommand(.stop)
         return .result()
     }
 }
