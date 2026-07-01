@@ -14,12 +14,11 @@ final class PhoneSessionManagerTests: XCTestCase {
     private var engine: OneEightyEngine!
 
     override func setUp() {
-        engine = OneEightyEngine(store: InMemoryStateStore())
-        engine.setup()
+        engine = OneEightyEngine(store: InMemoryPlaybackStore(), audio: FakeAudioOutput())
+        engine.hydrate()
     }
 
     override func tearDown() {
-        engine.teardown()
         engine = nil
     }
 
