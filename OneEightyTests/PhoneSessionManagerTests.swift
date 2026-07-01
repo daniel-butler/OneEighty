@@ -108,6 +108,29 @@ final class PhoneSessionManagerTests: XCTestCase {
         XCTAssertEqual(engine.bpm, 200, "BPM should not change from toggle")
     }
 
+    // MARK: - Command-id Dedupe (Task 14)
+
+    func testDuplicateCommandIdAppliedOnce() {
+        let store = InMemoryPlaybackStore()
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
+        let mgr = PhoneSessionManager(engine: engine)
+        let cmd: [String: Any] = ["command": "adjustBPM", "count": 3, "commandId": 42]
+        mgr.handleWatchCommandForTesting(cmd)
+        mgr.handleWatchCommandForTesting(cmd)   // retry — must NOT double-apply
+        XCTAssertEqual(store.state.bpm, 183)
+    }
+
+    func testCommandWithoutCommandIdStillApplies() {
+        let store = InMemoryPlaybackStore()
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
+        let mgr = PhoneSessionManager(engine: engine)
+        let cmd: [String: Any] = ["command": "adjustBPM", "count": 3]
+        mgr.handleWatchCommandForTesting(cmd)
+        XCTAssertEqual(store.state.bpm, 183, "Commands without a commandId (backward-compat) should still apply")
+    }
+
     // MARK: - Versioned State Payload
 
     func testStatePayloadIncludesVersion() {

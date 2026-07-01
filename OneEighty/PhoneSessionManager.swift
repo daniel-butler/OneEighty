@@ -26,6 +26,13 @@ final class PhoneSessionManager: NSObject, StateSubscriber {
 
     private(set) var confirmedState: PlaybackState?
 
+    /// Command ids already applied, used to dedupe retried watch commands
+    /// (WatchConnectivity can deliver the same message twice: sendMessage
+    /// failure falling back to transferUserInfo retry). Capped to avoid
+    /// unbounded growth — commandIds are monotonically increasing from the
+    /// watch, so old ones won't recur once evicted.
+    private var seenCommandIds = Set<Int>()
+
     func push(_ state: PlaybackState) {
         sendStateToWatch()
     }
@@ -181,6 +188,12 @@ extension PhoneSessionManager: WCSessionDelegate {
         }
     }
 
+    /// Test seam — exercises the private command handler directly without
+    /// going through WCSessionDelegate plumbing.
+    func handleWatchCommandForTesting(_ m: [String: Any]) {
+        handleWatchCommand(m)
+    }
+
     @MainActor
     private func handleWatchCommand(_ message: [String: Any], isQueued: Bool = false) {
         guard let command = message["command"] as? String else {
@@ -192,6 +205,18 @@ extension PhoneSessionManager: WCSessionDelegate {
         if isQueued, let timestamp = message["timestamp"] as? TimeInterval, timestamp < launchTimestamp {
             logger.info("Discarding stale queued command: \(command) (sent \(self.launchTimestamp - timestamp)s before launch)")
             return
+        }
+
+        // Dedupe retried commands (e.g. sendMessage failure falling back to
+        // transferUserInfo). Commands without a commandId are always applied
+        // (backward-compat with older watch builds / Task 15 not yet landed).
+        if let id = message["commandId"] as? Int {
+            guard !seenCommandIds.contains(id) else {
+                logger.info("Dropping duplicate watch command id \(id)")
+                return
+            }
+            seenCommandIds.insert(id)
+            if seenCommandIds.count > 256 { seenCommandIds.removeFirst() }
         }
 
         logger.info("Received watch command: \(command)")
