@@ -81,6 +81,33 @@ final class AppGroupPlaybackStoreTests: XCTestCase {
         XCTAssertGreaterThan(disk.version, 5)
     }
 
+    // MARK: - Live Activity Claim/Budget (real store, not InMemoryPlaybackStore)
+    //
+    // ActivityCoordinationTests exercises this contract against
+    // InMemoryPlaybackStore; these mirror it against the production
+    // AppGroupPlaybackStore to exercise the real `activityClaimLock` +
+    // UserDefaults-backed path (deliberately separate from the file-IO
+    // `ioQueue` — see the comment on `activityClaimLock`).
+
+    func testClaimActivityPushDedupesEqualAndOlderVersionsRealStore() {
+        let (store, _) = makeStore()
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(store.claimActivityPush(version: 5, at: now), "strictly newer than the unset baseline must claim")
+        XCTAssertFalse(store.claimActivityPush(version: 5, at: now), "equal version must be deduped")
+        XCTAssertFalse(store.claimActivityPush(version: 3, at: now), "older version must be deduped")
+        XCTAssertTrue(store.claimActivityPush(version: 6, at: now), "strictly newer version must be claimed")
+    }
+
+    func testActivityPushesInLastHourPrunesOlderStampsRealStore() {
+        let (store, _) = makeStore()
+        let base = Date(timeIntervalSince1970: 10_000)
+        XCTAssertTrue(store.claimActivityPush(version: 1, at: base))
+        XCTAssertTrue(store.claimActivityPush(version: 2, at: base.addingTimeInterval(4000)))
+        // The push at `base` is 4000s before this query — outside the 3600s
+        // window — so only the second push should count.
+        XCTAssertEqual(store.activityPushesInLastHour(at: base.addingTimeInterval(4000)), 1)
+    }
+
     // MARK: helpers
     private func readState(_ url: URL) throws -> AppState {
         try JSONDecoder().decode(AppState.self, from: Data(contentsOf: url))

@@ -186,4 +186,34 @@ final class PhoneSessionManagerTests: XCTestCase {
         XCTAssertEqual(payload["bpm"] as? Int, 200)
         XCTAssertEqual(payload["isPlaying"] as? Bool, true)
     }
+
+    // MARK: - WCSession-style Version Serialization Round-Trip
+
+    /// Every other test hands `applyState`/`statePayload` a literal Swift
+    /// dict, so the real WatchConnectivity NSNumber<->UInt64 bridging is
+    /// never exercised. WCSession message/context payloads must be
+    /// property-list compatible, so route the payload through
+    /// PropertyListSerialization (the same NSNumber-boxing constraint
+    /// WCSession's XPC transport imposes) and assert the values are still
+    /// recoverable with the exact casts WatchSessionManager.applyState uses.
+    func testStatePayloadSurvivesWCSessionStyleSerializationRoundTrip() throws {
+        let store = InMemoryPlaybackStore(AppState(version: 12, bpm: 200, isPlaying: true))
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
+        let mgr = PhoneSessionManager(engine: engine)
+        let payload = mgr.statePayload()
+
+        let data = try PropertyListSerialization.data(fromPropertyList: payload, format: .binary, options: 0)
+        let decodedObj = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        let decoded = try XCTUnwrap(decodedObj as? [String: Any])
+
+        // Same casts as WatchSessionManager.applyState.
+        let version = decoded["version"] as? UInt64
+        let bpm = decoded["bpm"] as? Int
+        let isPlaying = decoded["isPlaying"] as? Bool
+
+        XCTAssertEqual(version, 12, "version must survive plist round-trip and remain castable as UInt64")
+        XCTAssertEqual(bpm, 200)
+        XCTAssertEqual(isPlaying, true)
+    }
 }

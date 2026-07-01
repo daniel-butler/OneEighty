@@ -166,6 +166,28 @@ final class WatchSessionManagerTests: XCTestCase {
         XCTAssertTrue(m.isPlaying)
     }
 
+    // MARK: - WCSession-style Version Serialization Round-Trip
+
+    /// Every other `applyState` test hands a literal Swift `UInt64`, but a
+    /// real WCSession delivery boxes numeric payload values as `NSNumber`.
+    /// `applyState` drops the whole message if `version` isn't castable via
+    /// `as? UInt64` — this must succeed for an NSNumber-boxed value too, or
+    /// every real device message would be silently dropped.
+    func testApplyStateAcceptsWCSessionBridgedNSNumberVersion() {
+        let m = WatchSessionManager()
+        let message: [String: Any] = ["version": NSNumber(value: UInt64(9)), "bpm": 200, "isPlaying": true]
+        m.applyState(message)   // quiescent (no in-flight command) → adopts immediately
+        XCTAssertEqual(m.bpm, 200, "an NSNumber-boxed UInt64 version must not be dropped by the `as? UInt64` cast in applyState")
+        XCTAssertTrue(m.isPlaying)
+    }
+
+    func testApplyStateDropsMessageWithNonNumericVersion() {
+        let m = WatchSessionManager()
+        m.applyState(["version": "not-a-number", "bpm": 170, "isPlaying": true])
+        XCTAssertEqual(m.bpm, 180, "a non-numeric version must be dropped, leaving state unchanged")
+        XCTAssertFalse(m.isPlaying)
+    }
+
     // MARK: - Command Id Uniqueness (FIX 5)
 
     func testCommandIdsUniqueWithinAndAcrossLaunches() {
