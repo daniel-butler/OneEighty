@@ -8,44 +8,59 @@
 import ActivityKit
 import Foundation
 import os
-import UIKit
 
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "LiveActivity")
 
+/// Local content snapshot for pushing a Live Activity update. Distinct from
+/// the transitional `PlaybackState` (OneEightyEngine.swift) — this manager is
+/// fully migrated onto `AppState`/store-backed dedupe and no longer needs the
+/// shared transitional type.
+struct PlaybackStateSnapshot: Equatable {
+    let bpm: Int
+    let isPlaying: Bool
+}
+
 @MainActor
-final class LiveActivityManager: StateSubscriber {
-    static let shared = LiveActivityManager()
+final class LiveActivityManager {
+    static let shared = LiveActivityManager(store: AppGroupPlaybackStore.shared)
+
+    private let store: PlaybackStore
 
     private var currentActivity: Activity<OneEightyActivityAttributes>?
-    private var pendingState: (bpm: Int, isPlaying: Bool)?
-    private var throttleTimer: Timer?
-    private var lastIsPlaying: Bool = false
     private var contentUpdateTask: Task<Void, Never>?
 
     private(set) var tracker: ActivityUpdateTracker
     private(set) var lastSentState: OneEightyActivityAttributes.ContentState?
-    private(set) var confirmedState: PlaybackState?
-    private(set) var reconciliationCount: Int = 0
-    private var reconciliationTimer: Timer?
-    private var stateProvider: (() -> PlaybackState)?
+    private(set) var confirmedState: PlaybackStateSnapshot?
 
-    private init() {
+    static func makeForTesting(store: PlaybackStore) -> LiveActivityManager {
+        LiveActivityManager(store: store)
+    }
+
+    private init(store: PlaybackStore) {
+        self.store = store
         tracker = ActivityUpdateTracker()
-        // Wire the intent debouncer to route through this manager
-        IntentActivityDebouncer.shared.setUpdateHandler { [weak self] bpm, isPlaying in
-            self?.updateActivity(bpm: bpm, isPlaying: isPlaying)
+    }
+
+    /// Single entry point. Pushes only if `state.version` hasn't already been
+    /// claimed (the store's cross-process dedupe + budget gate). Echo
+    /// suppression and client-side coalescing are gone — correctness comes
+    /// from the version check, not from timing.
+    func apply(_ state: AppState) {
+        guard store.claimActivityPush(version: state.version, at: Date()) else { return }
+        guard currentActivity != nil else {
+            startActivity(bpm: state.bpm, isPlaying: state.isPlaying)
+            tracker.recordUpdate()
+            return
         }
-        startObservingAppLifecycle()
+        tracker.recordUpdate()
+        push(PlaybackStateSnapshot(bpm: state.bpm, isPlaying: state.isPlaying))
     }
 
-    func setStateProvider(_ provider: @escaping () -> PlaybackState) {
-        stateProvider = provider
-    }
-
-    func push(_ state: PlaybackState) {
+    func push(_ state: PlaybackStateSnapshot) {
         guard let activity = currentActivity else { return }
         let contentState = OneEightyActivityAttributes.ContentState(bpm: state.bpm, isPlaying: state.isPlaying)
-        tracker.recordUpdate()
+        lastSentState = contentState
         let count = tracker.totalUpdateCount
         let hourly = tracker.updatesInLastHour()
         logger.info("Pushing update #\(count) (hourly: \(hourly)) — bpm=\(state.bpm), isPlaying=\(state.isPlaying)")
@@ -65,15 +80,8 @@ final class LiveActivityManager: StateSubscriber {
         contentUpdateTask?.cancel()
         contentUpdateTask = nil
         currentActivity = nil
-        pendingState = nil
-        throttleTimer?.invalidate()
-        throttleTimer = nil
-        lastIsPlaying = false
         lastSentState = nil
         confirmedState = nil
-        reconciliationCount = 0
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = nil
         tracker.reset()
     }
 
@@ -106,7 +114,6 @@ final class LiveActivityManager: StateSubscriber {
                 attributes: attributes,
                 content: .init(state: contentState, staleDate: nil)
             )
-            lastIsPlaying = isPlaying
             logger.info("Live Activity started successfully, id=\(self.currentActivity?.id ?? "nil")")
             if let activity = currentActivity {
                 observeActivityUpdates(activity)
@@ -116,116 +123,20 @@ final class LiveActivityManager: StateSubscriber {
         }
     }
 
-    func updateActivity(bpm: Int, isPlaying: Bool) {
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = nil
-
-        let priority: UpdatePriority = (isPlaying != lastIsPlaying) ? .critical : .normal
-        let priorityLabel = priority == .critical ? "critical" : "normal"
-        logger.info("updateActivity — bpm=\(bpm), isPlaying=\(isPlaying), priority=\(priorityLabel)")
-
-        lastSentState = OneEightyActivityAttributes.ContentState(bpm: bpm, isPlaying: isPlaying)
-
-        guard currentActivity != nil else {
-            logger.warning("No current activity, falling back to startActivity")
-            startActivity(bpm: bpm, isPlaying: isPlaying)
-            if currentActivity != nil {
-                tracker.recordUpdate()
-                scheduleReconciliation()
-            }
-            return
-        }
-
-        // Critical updates (play/stop) bypass throttling entirely
-        if priority == .critical {
-            throttleTimer?.invalidate()
-            throttleTimer = nil
-            pendingState = nil
-            lastIsPlaying = isPlaying
-            pushUpdate(bpm: bpm, isPlaying: isPlaying)
-            return
-        }
-
-        // Normal updates: coalesce within minimum interval
-        pendingState = (bpm, isPlaying)
-
-        if throttleTimer == nil {
-            // First update in burst: send immediately if tracker allows
-            if !tracker.shouldThrottle(priority: .normal) {
-                pendingState = nil
-                pushUpdate(bpm: bpm, isPlaying: isPlaying)
-            }
-
-            // Start cooldown — pending updates flush when timer fires
-            throttleTimer = Timer.scheduledTimer(
-                withTimeInterval: tracker.effectiveInterval(),
-                repeats: false
-            ) { _ in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.throttleTimer = nil
-                    if let pending = self.pendingState {
-                        self.pendingState = nil
-                        self.pushUpdate(bpm: pending.bpm, isPlaying: pending.isPlaying)
-                    }
-                }
-            }
-        }
-    }
-
-    private func pushUpdate(bpm: Int, isPlaying: Bool) {
-        push(PlaybackState(bpm: bpm, isPlaying: isPlaying))
-        scheduleReconciliation()
-    }
-
     private func observeActivityUpdates(_ activity: Activity<OneEightyActivityAttributes>) {
         contentUpdateTask?.cancel()
         contentUpdateTask = Task { @MainActor in
             for await content in activity.contentUpdates {
                 let delivered = content.state
                 logger.info("contentUpdates delivered — bpm=\(delivered.bpm), isPlaying=\(delivered.isPlaying)")
-                confirmedState = PlaybackState(bpm: delivered.bpm, isPlaying: delivered.isPlaying)
+                confirmedState = PlaybackStateSnapshot(bpm: delivered.bpm, isPlaying: delivered.isPlaying)
             }
-        }
-    }
-
-    private func scheduleReconciliation() {
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-            Task { @MainActor [weak self] in
-                guard let self, self.currentActivity != nil else { return }
-                self.reconciliationTimer = nil
-                self.reconciliationCount += 1
-                if let provider = self.stateProvider {
-                    self.reconcile(currentState: provider())
-                }
-            }
-        }
-    }
-
-    private func startObservingAppLifecycle() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-    }
-
-    @objc private func appDidBecomeActive() {
-        Task { @MainActor in
-            guard currentActivity != nil, let provider = stateProvider else { return }
-            reconciliationCount += 1
-            reconcile(currentState: provider())
         }
     }
 
     func endActivity() {
         guard let activity = currentActivity else { return }
         logger.info("endActivity called — id=\(activity.id)")
-
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = nil
 
         // Clear synchronously BEFORE the async end to prevent race:
         // startActivity() calls endActivity() then immediately creates a new activity.

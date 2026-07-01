@@ -97,6 +97,7 @@ final class OneEightyEngine {
     private func syncFromStore(_ state: AppState) {
         bpm = state.bpm
         isPlaying = state.isPlaying
+        LiveActivityManager.shared.apply(state)
         reconcileAudio()
         updateNowPlaying()
     }

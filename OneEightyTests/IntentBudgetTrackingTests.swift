@@ -3,10 +3,18 @@ import XCTest
 
 final class IntentBudgetTrackingTests: XCTestCase {
 
-    /// Debouncer flush routes through LiveActivityManager — manager's tracker records the update
-    nonisolated func testDebouncerFlushRecordedInManagerTracker() async {
+    // NOTE: Prior to Task 10, these tests also asserted that IntentActivityDebouncer
+    // flushes were forwarded into LiveActivityManager's tracker, via a
+    // `setUpdateHandler` wiring installed in `LiveActivityManager.init`. That wiring
+    // was removed in Task 10 — `LiveActivityManager.apply(_:AppState)` is now the sole
+    // entry point, gated by the store's version-based dedupe (see
+    // `ActivityCoordinationTests` and `LiveActivityManagerTests`). `IntentActivityDebouncer`
+    // itself is deleted in Task 11 in favor of intents mutating the store directly and
+    // calling `LiveActivityManager.shared.apply(store.state)`. These tests now cover only
+    // the debouncer's own flush/coalescing behavior.
+
+    nonisolated func testDebouncerFlushesCriticalImmediately() async {
         await MainActor.run {
-            LiveActivityManager.shared.resetForTesting()
             IntentActivityDebouncer.shared.resetForTesting()
 
             IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
@@ -14,20 +22,11 @@ final class IntentBudgetTrackingTests: XCTestCase {
             XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1,
                            "Debouncer should have flushed once")
         }
-
-        try? await Task.sleep(for: .milliseconds(100))
-
-        await MainActor.run {
-            let manager = LiveActivityManager.shared
-            XCTAssertGreaterThanOrEqual(manager.tracker.totalUpdateCount, 1,
-                                        "Manager tracker should record the debouncer's flush")
-        }
     }
 
-    /// Without dedup, duplicate state from debouncer is forwarded to manager (reconciliation handles correctness)
-    nonisolated func testDuplicateFromDebouncerForwardedToManager() async {
+    /// The debouncer itself does not dedup identical states — each submit/reset cycle flushes.
+    nonisolated func testDuplicateSubmitsEachProduceAFlush() async {
         await MainActor.run {
-            LiveActivityManager.shared.resetForTesting()
             IntentActivityDebouncer.shared.resetForTesting()
 
             // First flush
@@ -37,10 +36,9 @@ final class IntentBudgetTrackingTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(400))
 
         await MainActor.run {
-            let countAfterFirst = LiveActivityManager.shared.tracker.totalUpdateCount
-            XCTAssertGreaterThan(countAfterFirst, 0, "First flush should be recorded")
+            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1, "First flush should be recorded")
 
-            // Second flush with same state — no dedup, forwarded to manager
+            // Second flush with same state — debouncer has no dedup of its own.
             IntentActivityDebouncer.shared.resetForTesting()
             IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
         }
@@ -48,17 +46,13 @@ final class IntentBudgetTrackingTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(400))
 
         await MainActor.run {
-            let manager = LiveActivityManager.shared
-            // Without dedup, both pushes go through. Reconciliation ensures eventual correctness.
-            XCTAssertGreaterThanOrEqual(manager.tracker.totalUpdateCount, 1,
-                                        "Updates should be forwarded to manager")
+            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1, "Second flush should also be recorded")
         }
     }
 
-    /// Batched BPM changes produce a single manager update
-    nonisolated func testBatchedBPMProducesSingleManagerUpdate() async {
+    /// Batched BPM changes coalesce into a single debouncer flush
+    nonisolated func testBatchedBPMProducesSingleDebouncerFlush() async {
         await MainActor.run {
-            LiveActivityManager.shared.resetForTesting()
             IntentActivityDebouncer.shared.resetForTesting()
 
             // Rapid BPM taps
@@ -70,13 +64,8 @@ final class IntentBudgetTrackingTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(500))
 
         await MainActor.run {
-            let debouncer = IntentActivityDebouncer.shared
-            let manager = LiveActivityManager.shared
-
-            XCTAssertEqual(debouncer.flushCount, 1,
+            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1,
                            "Debouncer should coalesce into 1 flush")
-            XCTAssertGreaterThanOrEqual(manager.tracker.totalUpdateCount, 1,
-                                        "Manager should record the batched update")
         }
     }
 }
