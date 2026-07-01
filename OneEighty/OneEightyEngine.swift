@@ -118,7 +118,12 @@ final class OneEightyEngine {
 
     // MARK: - Controls (all mutate the store; syncFromStore drives audio)
 
-    func togglePlayback() { store.mutate { $0.isPlaying.toggle() } }
+    func togglePlayback() {
+        store.mutate { $0.isPlaying.toggle() }
+        // User explicitly changed playback — if now stopped, drop any pending
+        // interruption resume intent so we don't auto-resume against an explicit stop.
+        if !isPlaying { wasPlayingBeforeInterruption = false }
+    }
     func setBPM(_ newBPM: Int) { store.mutate { $0.bpm = newBPM } }
     func adjustBPM(by delta: Int) { store.mutate { $0.bpm += delta } }
     func incrementBPM() { store.mutate { $0.bpm += 1 } }

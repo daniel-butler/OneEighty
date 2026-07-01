@@ -6,11 +6,21 @@
 //  Also covers the cold-launch "start stopped" rule via hydrateForUILaunch().
 //
 
+import UIKit
 import XCTest
 @testable import OneEighty
 
 @MainActor
 final class EngineInterruptionTests: XCTestCase {
+    /// Interruption handlers dispatch their store.mutate via `Task { @MainActor in ... }`,
+    /// so posting a notification doesn't synchronously update the store — pump the
+    /// runloop once to let the enqueued main-actor work run before asserting.
+    private func pumpMainRunLoop() {
+        let e = expectation(description: "runloop pump")
+        DispatchQueue.main.async { e.fulfill() }
+        wait(for: [e], timeout: 1)
+    }
+
     func testInterruptionStopsThenResumesPlayback() {
         let store = InMemoryPlaybackStore(AppState(version: 1, bpm: 180, isPlaying: true))
         let audio = FakeAudioOutput()
@@ -20,17 +30,67 @@ final class EngineInterruptionTests: XCTestCase {
 
         NotificationCenter.default.post(name: .audioInterruptionBegan, object: nil)
         // began sets desired isPlaying=false via mutate (async Task) — pump the runloop
-        let e1 = expectation(description: "stopped")
-        DispatchQueue.main.async { e1.fulfill() }
-        wait(for: [e1], timeout: 1)
+        pumpMainRunLoop()
         XCTAssertFalse(store.state.isPlaying)
 
         NotificationCenter.default.post(name: .audioInterruptionEnded, object: nil)
-        let e2 = expectation(description: "resumed")
-        DispatchQueue.main.async { e2.fulfill() }
-        wait(for: [e2], timeout: 1)
+        pumpMainRunLoop()
         XCTAssertTrue(store.state.isPlaying)
         XCTAssertTrue(audio.isRunning)
+    }
+
+    func testDuplicateBeganPreservesResumeIntent() {
+        let store = InMemoryPlaybackStore(AppState(version: 1, bpm: 180, isPlaying: true))
+        let audio = FakeAudioOutput()
+        let engine = OneEightyEngine(store: store, audio: audio)
+        engine.hydrate()
+        engine.startObservingInterruptions()
+
+        NotificationCenter.default.post(name: .audioInterruptionBegan, object: nil)
+        pumpMainRunLoop()
+        NotificationCenter.default.post(name: .audioInterruptionBegan, object: nil) // duplicate began
+        pumpMainRunLoop()
+        XCTAssertFalse(store.state.isPlaying)
+
+        NotificationCenter.default.post(name: .audioInterruptionEnded, object: nil)
+        pumpMainRunLoop()
+        XCTAssertTrue(store.state.isPlaying) // resume intent survived the duplicate began
+    }
+
+    func testDidBecomeActiveResumesAfterInterruption() {
+        let store = InMemoryPlaybackStore(AppState(version: 1, bpm: 180, isPlaying: true))
+        let audio = FakeAudioOutput()
+        let engine = OneEightyEngine(store: store, audio: audio)
+        engine.hydrate()
+        engine.startObservingInterruptions()
+
+        NotificationCenter.default.post(name: .audioInterruptionBegan, object: nil)
+        pumpMainRunLoop()
+        XCTAssertFalse(store.state.isPlaying)
+
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        pumpMainRunLoop()
+        XCTAssertTrue(store.state.isPlaying) // foreground recovery resumed
+    }
+
+    func testExplicitStopClearsResumeIntent() {
+        let store = InMemoryPlaybackStore(AppState(version: 1, bpm: 180, isPlaying: true))
+        let audio = FakeAudioOutput()
+        let engine = OneEightyEngine(store: store, audio: audio)
+        engine.hydrate()
+        engine.startObservingInterruptions()
+
+        NotificationCenter.default.post(name: .audioInterruptionBegan, object: nil)
+        pumpMainRunLoop()
+        XCTAssertFalse(store.state.isPlaying) // stopped, resume intent pending
+
+        engine.togglePlayback() // user starts -> playing
+        engine.togglePlayback() // user explicitly stops -> should clear resume intent
+        XCTAssertFalse(store.state.isPlaying)
+
+        NotificationCenter.default.post(name: .audioInterruptionEnded, object: nil)
+        pumpMainRunLoop()
+        XCTAssertFalse(store.state.isPlaying) // must NOT auto-resume against explicit stop
     }
 
     func testUILaunchStartsStoppedEvenIfPersistedPlaying() {
