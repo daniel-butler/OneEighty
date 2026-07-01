@@ -3,69 +3,51 @@ import XCTest
 
 final class IntentBudgetTrackingTests: XCTestCase {
 
-    // NOTE: Prior to Task 10, these tests also asserted that IntentActivityDebouncer
-    // flushes were forwarded into LiveActivityManager's tracker, via a
-    // `setUpdateHandler` wiring installed in `LiveActivityManager.init`. That wiring
-    // was removed in Task 10 — `LiveActivityManager.apply(_:AppState)` is now the sole
-    // entry point, gated by the store's version-based dedupe (see
-    // `ActivityCoordinationTests` and `LiveActivityManagerTests`). `IntentActivityDebouncer`
-    // itself is deleted in Task 11 in favor of intents mutating the store directly and
-    // calling `LiveActivityManager.shared.apply(store.state)`. These tests now cover only
-    // the debouncer's own flush/coalescing behavior.
+    // NOTE: Prior to Task 11, these tests exercised `IntentActivityDebouncer`'s
+    // batching/coalescing behavior for widget-extension BPM intents. As of Task
+    // 11, the debouncer is deleted: `IncrementBPMIntent`/`DecrementBPMIntent`
+    // mutate `AppGroupPlaybackStore` with an absolute delta and push the
+    // post-mutation actual value straight to `LiveActivityManager.apply(_:)`,
+    // which is itself deduped by the store's version-based `claimActivityPush`
+    // (see `ActivityCoordinationTests` and `LiveActivityManagerTests`). These
+    // tests now cover the store-level convergence property that replaced the
+    // debouncer's job: rapid absolute mutations always converge on the
+    // correct final BPM, with no drift from estimating deltas.
 
-    nonisolated func testDebouncerFlushesCriticalImmediately() async {
-        await MainActor.run {
-            IntentActivityDebouncer.shared.resetForTesting()
-
-            IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
-
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1,
-                           "Debouncer should have flushed once")
-        }
+    @MainActor
+    func testRapidIncrementsConvergeToAbsoluteBPM() {
+        let store = InMemoryPlaybackStore()
+        for _ in 0..<5 { store.mutate { $0.bpm += 1 } }
+        XCTAssertEqual(store.state.bpm, 185)
+        XCTAssertEqual(store.state.version, 5)
     }
 
-    /// The debouncer itself does not dedup identical states — each submit/reset cycle flushes.
-    nonisolated func testDuplicateSubmitsEachProduceAFlush() async {
-        await MainActor.run {
-            IntentActivityDebouncer.shared.resetForTesting()
-
-            // First flush
-            IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
-        }
-
-        try? await Task.sleep(for: .milliseconds(400))
-
-        await MainActor.run {
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1, "First flush should be recorded")
-
-            // Second flush with same state — debouncer has no dedup of its own.
-            IntentActivityDebouncer.shared.resetForTesting()
-            IntentActivityDebouncer.shared.submit(bpm: 180, isPlaying: true, priority: .critical)
-        }
-
-        try? await Task.sleep(for: .milliseconds(400))
-
-        await MainActor.run {
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1, "Second flush should also be recorded")
-        }
+    @MainActor
+    func testRapidDecrementsConvergeToAbsoluteBPM() {
+        let store = InMemoryPlaybackStore()
+        for _ in 0..<5 { store.mutate { $0.bpm -= 1 } }
+        XCTAssertEqual(store.state.bpm, 175)
+        XCTAssertEqual(store.state.version, 5)
     }
 
-    /// Batched BPM changes coalesce into a single debouncer flush
-    nonisolated func testBatchedBPMProducesSingleDebouncerFlush() async {
-        await MainActor.run {
-            IntentActivityDebouncer.shared.resetForTesting()
+    /// Mixed rapid increments/decrements still converge on the correct
+    /// absolute final value — no estimate drift, since each mutation reads
+    /// and writes the actual current bpm.
+    @MainActor
+    func testMixedRapidAdjustmentsConvergeToAbsoluteBPM() {
+        let store = InMemoryPlaybackStore()
+        for _ in 0..<7 { store.mutate { $0.bpm += 1 } }
+        for _ in 0..<3 { store.mutate { $0.bpm -= 1 } }
+        XCTAssertEqual(store.state.bpm, 184)
+        XCTAssertEqual(store.state.version, 10)
+    }
 
-            // Rapid BPM taps
-            for bpm in 181...185 {
-                IntentActivityDebouncer.shared.submit(bpm: bpm, isPlaying: true, priority: .normal)
-            }
-        }
-
-        try? await Task.sleep(for: .milliseconds(500))
-
-        await MainActor.run {
-            XCTAssertEqual(IntentActivityDebouncer.shared.flushCount, 1,
-                           "Debouncer should coalesce into 1 flush")
-        }
+    /// Rapid increments clamp at the upper bpm bound rather than overshooting.
+    @MainActor
+    func testRapidIncrementsClampAtUpperBound() {
+        let store = InMemoryPlaybackStore(AppState(version: 0, bpm: 229, isPlaying: false))
+        for _ in 0..<5 { store.mutate { $0.bpm += 1 } }
+        XCTAssertEqual(store.state.bpm, 230)
+        XCTAssertEqual(store.state.version, 5)
     }
 }

@@ -17,16 +17,22 @@ struct ToggleOneEightyIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let store = SharedStateStore.shared
-        let wasPlaying = store.isPlaying
+        // NOTE: temporary minimal patch — this intent is not yet migrated to
+        // AppGroupPlaybackStore (that's Task 12). It's routed through
+        // AppGroupPlaybackStore here only to keep the target compiling after
+        // IntentActivityDebouncer's deletion in Task 11.
+        let sharedStore = SharedStateStore.shared
+        let wasPlaying = sharedStore.isPlaying
         let nowPlaying = !wasPlaying
         logger.info("ToggleOneEightyIntent — wasPlaying=\(wasPlaying), nowPlaying=\(nowPlaying)")
 
-        store.isPlaying = nowPlaying
-        let bpm = store.bpm
-        IntentActivityDebouncer.shared.submit(bpm: bpm, isPlaying: nowPlaying, priority: .critical)
+        sharedStore.isPlaying = nowPlaying
 
-        store.postCommand(nowPlaying ? .start : .stop)
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.isPlaying = nowPlaying }
+        LiveActivityManager.shared.apply(store.state)
+
+        sharedStore.postCommand(nowPlaying ? .start : .stop)
         return .result()
     }
 }
@@ -38,11 +44,16 @@ struct StartOneEightyIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StartOneEightyIntent.perform()")
-        let store = SharedStateStore.shared
-        store.isPlaying = true
-        let bpm = store.bpm
-        IntentActivityDebouncer.shared.submit(bpm: bpm, isPlaying: true, priority: .critical)
-        store.postCommand(.start)
+        // NOTE: temporary minimal patch — see ToggleOneEightyIntent. Full
+        // migration to AppGroupPlaybackStore is Task 12.
+        let sharedStore = SharedStateStore.shared
+        sharedStore.isPlaying = true
+
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.isPlaying = true }
+        LiveActivityManager.shared.apply(store.state)
+
+        sharedStore.postCommand(.start)
         return .result()
     }
 }
@@ -54,11 +65,16 @@ struct StopOneEightyIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StopOneEightyIntent.perform()")
-        let store = SharedStateStore.shared
-        store.isPlaying = false
-        let bpm = store.bpm
-        IntentActivityDebouncer.shared.submit(bpm: bpm, isPlaying: false, priority: .critical)
-        store.postCommand(.stop)
+        // NOTE: temporary minimal patch — see ToggleOneEightyIntent. Full
+        // migration to AppGroupPlaybackStore is Task 12.
+        let sharedStore = SharedStateStore.shared
+        sharedStore.isPlaying = false
+
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.isPlaying = false }
+        LiveActivityManager.shared.apply(store.state)
+
+        sharedStore.postCommand(.stop)
         return .result()
     }
 }
@@ -69,13 +85,10 @@ struct IncrementBPMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let store = SharedStateStore.shared
-        logger.info("IncrementBPMIntent — posting adjustBPM(+1)")
-        store.postCommand(.adjustBPM(1))
-        // Widget extension fallback: estimate new BPM for direct ActivityKit push
-        let newBPM = min(230, store.bpm + 1)
-        let isPlaying = store.isPlaying
-        IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
+        logger.info("IncrementBPMIntent — mutating store absolutely")
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.bpm += 1 }
+        LiveActivityManager.shared.apply(store.state)   // post-mutation actual value
         return .result()
     }
 }
@@ -86,13 +99,10 @@ struct DecrementBPMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let store = SharedStateStore.shared
-        logger.info("DecrementBPMIntent — posting adjustBPM(-1)")
-        store.postCommand(.adjustBPM(-1))
-        // Widget extension fallback: estimate new BPM for direct ActivityKit push
-        let newBPM = max(150, store.bpm - 1)
-        let isPlaying = store.isPlaying
-        IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
+        logger.info("DecrementBPMIntent — mutating store absolutely")
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.bpm -= 1 }
+        LiveActivityManager.shared.apply(store.state)
         return .result()
     }
 }
