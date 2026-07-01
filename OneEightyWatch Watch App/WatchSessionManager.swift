@@ -116,11 +116,22 @@ final class WatchSessionManager: NSObject {
     /// optimistic taps folded into it (see `pendingBatchBeginCount`) resolve
     /// together when this one command is acked or fails.
     private func flushBatchedBPMDelta() {
-        guard pendingBPMDelta != 0 else { return }
-        let delta = pendingBPMDelta
-        pendingBPMDelta = 0
         let resolveCount = pendingBatchBeginCount
         pendingBatchBeginCount = 0
+        guard pendingBPMDelta != 0 else {
+            // Net-zero batch (e.g. +1 then -1 inside the 80ms coalescing
+            // window): no command will ever be sent, so no reply/error will
+            // ever arrive to resolve the folded beginCommand() holds. Release
+            // them here instead of leaving inFlight stuck forever. There's no
+            // real pending edit in this case, so it's correct to snap to
+            // authoritative state once this brings in-flight to zero.
+            if resolveCount > 0 {
+                endCommand(success: true, count: resolveCount, adopt: true)
+            }
+            return
+        }
+        let delta = pendingBPMDelta
+        pendingBPMDelta = 0
         sendCommand("adjustBPM", commandId: mintCommandId(), extra: ["count": delta], resolveCount: resolveCount)
     }
 
@@ -129,8 +140,10 @@ final class WatchSessionManager: NSObject {
     func flushAndInvalidateTimers() {
         batchTimer?.invalidate()
         batchTimer = nil
-        // Send any pending batched delta before going to background
-        if pendingBPMDelta != 0 {
+        // Flush whenever there's a pending delta OR folded beginCommand()
+        // holds waiting on a net-zero batch — otherwise a net-zero batch's
+        // holds would never be released (see flushBatchedBPMDelta).
+        if pendingBPMDelta != 0 || pendingBatchBeginCount > 0 {
             flushBatchedBPMDelta()
         }
     }
@@ -146,9 +159,15 @@ final class WatchSessionManager: NSObject {
         inFlight += count
     }
 
-    private func endCommand(success: Bool, count: Int = 1) {
+    /// Resolves `count` in-flight command(s). When this brings `inFlight` to
+    /// zero, the watch goes quiescent and — only if `adopt` is true — snaps
+    /// to the latest remembered authoritative snapshot. `adopt` distinguishes
+    /// "this edit is queued and will eventually apply on the phone" (keep
+    /// the optimistic value; the phone's reconciliation echo will correct
+    /// it) from "this edit failed / never happened" (snap to truth).
+    private func endCommand(success: Bool, count: Int = 1, adopt: Bool = true) {
         inFlight = max(0, inFlight - count)
-        if inFlight == 0 {
+        if inFlight == 0 && adopt {
             adoptLatestIfAny()
         }
     }
@@ -167,14 +186,20 @@ final class WatchSessionManager: NSObject {
 
     // test seams
     func ackInFlightForTesting() { endCommand(success: true) }
-    func failInFlightForTesting() { adoptLatestIfAny(); endCommand(success: false) }
+    func failInFlightForTesting() { endCommand(success: false, adopt: true) }
+    /// Simulates the resolution of a queued (unreachable / transferUserInfo)
+    /// send: the command WILL eventually apply on the phone, so keep the
+    /// optimistic value rather than snapping to stale authoritative state.
+    func resolveQueuedSendForTesting(count: Int = 1) { endCommand(success: true, count: count, adopt: false) }
 
     private func sendCommand(_ command: String, commandId: Int, extra: [String: Any] = [:], resolveCount: Int = 1) {
         guard let session = wcSession else {
             logger.warning("No WCSession — command \(command) dropped")
-            // No session means no reply/error will ever arrive — resolve
-            // immediately so in-flight can't get stuck (self-heal).
-            endCommand(success: true, count: resolveCount)
+            // No session means the command is truly dropped — it will never
+            // reach the phone. Resolve immediately so in-flight can't get
+            // stuck, and snap to authoritative once quiescent (self-heal),
+            // since this edit will never actually apply.
+            endCommand(success: true, count: resolveCount, adopt: true)
             return
         }
 
@@ -191,28 +216,32 @@ final class WatchSessionManager: NSObject {
             // Immediate delivery — phone is active
             session.sendMessage(payload, replyHandler: { [weak self] reply in
                 Task { @MainActor [weak self] in
+                    // Reply carries fresh authoritative state — refresh
+                    // latestAuthoritative before resolving, then snap to it.
                     self?.applyState(reply)
-                    self?.endCommand(success: true, count: resolveCount)
+                    self?.endCommand(success: true, count: resolveCount, adopt: true)
                 }
             }, errorHandler: { [weak self] error in
                 logger.error("sendMessage failed for \(command): \(error.localizedDescription)")
                 // Fall back to transferUserInfo for queued delivery
                 session.transferUserInfo(payload)
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.adoptLatestIfAny()
-                    self.endCommand(success: false, count: resolveCount)
+                    // Genuine failure — the edit likely didn't apply. Self-heal
+                    // by snapping to authoritative once quiescent.
+                    self?.endCommand(success: false, count: resolveCount, adopt: true)
                 }
             })
             logger.info("Sent command to phone via message: \(command)")
         } else {
             // Phone not reachable — queue for delivery when it wakes. There's
             // no ack channel for transferUserInfo, so resolve now (treat as
-            // sent); the phone's periodic reconciliation will self-heal any
-            // drift once it eventually delivers.
+            // sent), but keep the optimistic value: the command WILL apply
+            // once delivered, and the phone's periodic reconciliation will
+            // echo back the correct state then. Snapping to the last known
+            // (stale) authoritative here would visibly revert a real edit.
             session.transferUserInfo(payload)
             logger.info("Queued command to phone via transferUserInfo: \(command)")
-            endCommand(success: true, count: resolveCount)
+            endCommand(success: true, count: resolveCount, adopt: false)
         }
     }
 

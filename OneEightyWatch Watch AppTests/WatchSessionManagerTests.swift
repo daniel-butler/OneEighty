@@ -109,10 +109,44 @@ final class WatchSessionManagerTests: XCTestCase {
 
     func testLostOptimisticEditSelfHeals() {
         let m = WatchSessionManager()
+        // Seed an authoritative snapshot BEFORE the failure so the revert
+        // path is actually exercised (latestAuthoritative must be non-nil
+        // at failure time, or the revert is a no-op).
+        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(3)])
+        XCTAssertEqual(m.bpm, 180)                        // quiescent, so this applies immediately
         m.incrementBPM()                                  // optimistic 181
         m.failInFlightForTesting()                        // command failed → revert + quiescent
-        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(3)])
         XCTAssertEqual(m.bpm, 180)                        // healed back to truth
+    }
+
+    func testNetZeroBatchDoesNotLeakInFlight() {
+        let m = WatchSessionManager()
+        m.incrementBPM()                                  // optimistic 181, inFlight 1, batched +1
+        m.decrementBPM()                                  // optimistic 180, inFlight 2, batched net 0
+        XCTAssertTrue(m.hasPendingEdit)                    // holds still outstanding pre-flush
+        // Force the batch flush deterministically instead of waiting on the
+        // real 80ms timer.
+        m.flushAndInvalidateTimers()
+        XCTAssertFalse(m.hasPendingEdit, "net-zero batch must release its folded beginCommand holds, not leak them")
+        // Prove there's no leak: a fresh, higher-version authoritative state
+        // must now be adopted since in-flight is truly back to zero.
+        m.applyState(["bpm": 200, "isPlaying": true, "version": UInt64(9)])
+        XCTAssertEqual(m.bpm, 200)
+        XCTAssertTrue(m.isPlaying)
+    }
+
+    func testUnreachableSendKeepsOptimisticValue() {
+        let m = WatchSessionManager()
+        // Seed authoritative state while quiescent.
+        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(1)])
+        XCTAssertEqual(m.bpm, 180)
+        m.incrementBPM()                                  // optimistic 181, inFlight 1
+        // Simulate the transferUserInfo (unreachable/queued) resolution: the
+        // command WILL apply later, so it resolves without adopting stale
+        // authoritative state.
+        m.resolveQueuedSendForTesting()
+        XCTAssertFalse(m.hasPendingEdit)
+        XCTAssertEqual(m.bpm, 181, "unreachable queued send must keep the optimistic value, not revert to stale authoritative")
     }
 
     func testApplyStateIgnoredWithoutVersion() {
