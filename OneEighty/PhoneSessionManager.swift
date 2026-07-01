@@ -8,6 +8,7 @@
 //
 
 import Combine
+import UIKit
 import WatchConnectivity
 import os
 
@@ -20,6 +21,8 @@ final class PhoneSessionManager: NSObject, StateSubscriber {
     private var cancellable: AnyCancellable?
     private var echoDebounceTimer: Timer?
     private var lastSentPlayingState: Bool?
+    private var reconcileTimer: Timer?
+    private var didBecomeActiveObserver: NSObjectProtocol?
 
     private(set) var confirmedState: PlaybackState?
 
@@ -49,6 +52,13 @@ final class PhoneSessionManager: NSObject, StateSubscriber {
         }
     }
 
+    deinit {
+        reconcileTimer?.invalidate()
+        if let didBecomeActiveObserver {
+            NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+        }
+    }
+
     func activate() {
         guard WCSession.isSupported() else {
             logger.info("WCSession not supported on this device")
@@ -58,25 +68,57 @@ final class PhoneSessionManager: NSObject, StateSubscriber {
         session.delegate = self
         session.activate()
         logger.info("WCSession activating")
+        startReconciliation()
+    }
+
+    /// Periodically re-send state to the watch so a dropped context/message
+    /// (unreachable, app not yet installed, transient failure) eventually
+    /// self-heals without requiring a user-visible engine change.
+    private func startReconciliation() {
+        reconcileTimer?.invalidate()
+        reconcileTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.sendStateToWatch()
+            }
+        }
+
+        if didBecomeActiveObserver == nil {
+            didBecomeActiveObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.sendStateToWatch()
+                }
+            }
+        }
+    }
+
+    /// The message/reply payload sent to the watch. Includes `version` so the
+    /// watch can reject stale snapshots (e.g. a delayed reconcile tick racing
+    /// a newer app-context update).
+    func statePayload() -> [String: Any] {
+        ["bpm": engine.bpm, "isPlaying": engine.isPlaying, "version": engine.currentVersion]
     }
 
     func sendStateToWatch() {
-        guard WCSession.default.activationState == .activated,
-              WCSession.default.isPaired,
-              WCSession.default.isWatchAppInstalled else { return }
+        guard WCSession.default.activationState == .activated else { return }
 
-        let state: [String: Any] = [
-            "bpm": engine.bpm,
-            "isPlaying": engine.isPlaying
-        ]
+        let state = statePayload()
 
         // Always update application context — this persists and is available
         // immediately when the watch app launches via receivedApplicationContext.
+        // This must not be gated on reachability/install state, or a dropped
+        // connection would also drop the state the watch reconciles against
+        // once it reconnects.
         do {
             try WCSession.default.updateApplicationContext(state)
         } catch {
             logger.error("updateApplicationContext failed: \(error.localizedDescription)")
         }
+
+        guard WCSession.default.isPaired, WCSession.default.isWatchAppInstalled else { return }
 
         // Also send immediate message when reachable for live updates.
         if WCSession.default.isReachable {
@@ -129,7 +171,7 @@ extension PhoneSessionManager: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
         Task { @MainActor in
             self.handleWatchCommand(message)
-            replyHandler(["bpm": self.engine.bpm, "isPlaying": self.engine.isPlaying])
+            replyHandler(self.statePayload())
         }
     }
 

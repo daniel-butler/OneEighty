@@ -107,4 +107,17 @@ final class PhoneSessionManagerTests: XCTestCase {
         engine.togglePlayback()
         XCTAssertEqual(engine.bpm, 200, "BPM should not change from toggle")
     }
+
+    // MARK: - Versioned State Payload
+
+    func testStatePayloadIncludesVersion() {
+        let store = InMemoryPlaybackStore(AppState(version: 12, bpm: 200, isPlaying: true))
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
+        let mgr = PhoneSessionManager(engine: engine)
+        let payload = mgr.statePayload()
+        XCTAssertEqual(payload["version"] as? UInt64, 12)
+        XCTAssertEqual(payload["bpm"] as? Int, 200)
+        XCTAssertEqual(payload["isPlaying"] as? Bool, true)
+    }
 }
