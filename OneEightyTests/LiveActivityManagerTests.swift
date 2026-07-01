@@ -79,6 +79,41 @@ final class LiveActivityManagerTests: XCTestCase {
         manager.cleanupStaleActivities()
     }
 
+    // MARK: - Budget throttling / coalescing (FIX 1)
+
+    func testNormalBurstOverBudgetCoalesces() {
+        // A huge minimumInterval forces every update after the first to be
+        // throttled, so a burst of NORMAL (isPlaying-constant) bpm updates must
+        // coalesce into far fewer real pushes than inputs.
+        let tracker = ActivityUpdateTracker(minimumInterval: 100, budgetWarningThreshold: 40)
+        let manager = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore(), tracker: tracker)
+        manager.startActivity(bpm: 180, isPlaying: true)
+
+        for v in 1...10 {
+            manager.apply(AppState(version: UInt64(v), bpm: 180 + v, isPlaying: true))
+        }
+
+        XCTAssertLessThan(tracker.totalUpdateCount, 10,
+                          "NORMAL updates while throttled must coalesce, not push once per input")
+        XCTAssertGreaterThanOrEqual(tracker.totalUpdateCount, 1,
+                                    "at least the first update should push")
+    }
+
+    func testCriticalUpdateBypassesThrottle() {
+        let tracker = ActivityUpdateTracker(minimumInterval: 100, budgetWarningThreshold: 40)
+        let manager = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore(), tracker: tracker)
+        manager.startActivity(bpm: 180, isPlaying: true)
+        manager.apply(AppState(version: 1, bpm: 181, isPlaying: true))   // first push, records timestamp
+        let before = tracker.totalUpdateCount
+
+        // Under heavy throttle a bpm-only change would coalesce, but an
+        // isPlaying transition is CRITICAL and must push immediately.
+        manager.apply(AppState(version: 2, bpm: 181, isPlaying: false))
+
+        XCTAssertEqual(tracker.totalUpdateCount, before + 1,
+                       "CRITICAL isPlaying transition must bypass throttle and push immediately")
+    }
+
     func testResetClearsLastSentState() {
         let manager = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
         manager.startActivity(bpm: 180, isPlaying: true)

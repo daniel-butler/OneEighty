@@ -166,6 +166,18 @@ final class WatchSessionManagerTests: XCTestCase {
         XCTAssertTrue(m.isPlaying)
     }
 
+    // MARK: - Command Id Uniqueness (FIX 5)
+
+    func testCommandIdsUniqueWithinAndAcrossLaunches() {
+        let a = WatchSessionManager()
+        let b = WatchSessionManager()   // simulates a relaunch (new launchNonce)
+        let a1 = a.mintCommandIdForTesting()
+        let a2 = a.mintCommandIdForTesting()
+        let b1 = b.mintCommandIdForTesting()
+        XCTAssertNotEqual(a1, a2, "sequential ids within a launch must differ")
+        XCTAssertNotEqual(a1, b1, "ids across launches must differ even at the same sequence")
+    }
+
     // MARK: - Rapid Operations (existing)
 
     func testRapidToggles() {

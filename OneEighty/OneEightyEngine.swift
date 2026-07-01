@@ -89,7 +89,10 @@ final class OneEightyEngine {
     /// the app never auto-starts sound on open. If an AudioPlaybackIntent already
     /// started audio in this process, `audio.isRunning` is true and we preserve it.
     func hydrateForUILaunch() {
-        if !audio.isRunning {
+        // Only mutate when there's actually something to change — mutating an
+        // already-stopped state bumps `version` and posts a Darwin notification
+        // for a no-op, waking the widget extension needlessly.
+        if !audio.isRunning && store.state.isPlaying {
             store.mutate { $0.isPlaying = false }
         }
         hydrate()

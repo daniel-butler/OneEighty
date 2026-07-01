@@ -21,6 +21,15 @@ final class AppGroupPlaybackStore: PlaybackStore {
     private nonisolated let defaults: UserDefaults
     private nonisolated let ioQueue = DispatchQueue(label: "com.danielbutler.OneEighty.store.io")
 
+    /// Dedicated synchronization for the Live Activity claim/budget state ONLY.
+    /// Deliberately NOT `ioQueue`: the claim methods are called from `@MainActor`
+    /// (`LiveActivityManager.apply`) on every state change, and `ioQueue` runs the
+    /// coordinated cross-process file writes in `mutate`. Sharing it would block
+    /// the main thread behind coordinated file IO — the exact priority inversion
+    /// the off-main design avoids. This lock guards only the small, fast
+    /// defaults-backed claim state, so main-actor callers never wait on file IO.
+    private nonisolated let activityClaimLock = OSAllocatedUnfairLock()
+
     var volume: Float {
         get { defaults.object(forKey: "volume") as? Float ?? 0.4 }
         set { defaults.set(newValue, forKey: "volume") }
@@ -67,8 +76,13 @@ final class AppGroupPlaybackStore: PlaybackStore {
                 transform(&current)
                 current.version += 1
                 current.clampInvariants()
-                if let data = try? JSONEncoder().encode(current) {
-                    try? data.write(to: writeURL, options: .atomic)
+                do {
+                    let data = try JSONEncoder().encode(current)
+                    try data.write(to: writeURL, options: .atomic)
+                } catch {
+                    // The projection + Darwin post still proceed below; log so a
+                    // silently-dropped authoritative write is diagnosable.
+                    logger.error("coordinated write failed to encode/persist state: \(error.localizedDescription)")
                 }
                 authoritative = current
             }
@@ -132,10 +146,11 @@ final class AppGroupPlaybackStore: PlaybackStore {
     // MARK: - Live Activity coordination
 
     func claimActivityPush(version: UInt64, at date: Date) -> Bool {
-        ioQueue.sync {
+        activityClaimLock.withLock {
             let last = UInt64(defaults.integer(forKey: "lastPushedActivityVersion"))
             guard version > last else { return false }
-            defaults.set(Int(version), forKey: "lastPushedActivityVersion")
+            // `Int(exactly:)` avoids a trap if `version` ever exceeds Int.max.
+            defaults.set(Int(exactly: version) ?? Int.max, forKey: "lastPushedActivityVersion")
             var stamps = (defaults.array(forKey: "activityPushStamps") as? [Double]) ?? []
             stamps.append(date.timeIntervalSince1970)
             stamps = stamps.filter { $0 > date.timeIntervalSince1970 - 3600 }
@@ -145,7 +160,7 @@ final class AppGroupPlaybackStore: PlaybackStore {
     }
 
     func activityPushesInLastHour(at date: Date) -> Int {
-        ioQueue.sync {
+        activityClaimLock.withLock {
             let stamps = (defaults.array(forKey: "activityPushStamps") as? [Double]) ?? []
             return stamps.filter { $0 > date.timeIntervalSince1970 - 3600 }.count
         }

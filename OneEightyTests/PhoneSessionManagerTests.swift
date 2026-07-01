@@ -115,10 +115,53 @@ final class PhoneSessionManagerTests: XCTestCase {
         let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
         engine.hydrate()
         let mgr = PhoneSessionManager(engine: engine)
-        let cmd: [String: Any] = ["command": "adjustBPM", "count": 3, "commandId": 42]
+        // Compound string id shape minted by the watch: "<launchNonce>-<seq>".
+        let cmd: [String: Any] = ["command": "adjustBPM", "count": 3, "commandId": "launchA-1"]
         mgr.handleWatchCommandForTesting(cmd)
         mgr.handleWatchCommandForTesting(cmd)   // retry — must NOT double-apply
         XCTAssertEqual(store.state.bpm, 183)
+    }
+
+    func testSameSequenceDifferentLaunchNotDeduped() {
+        // The watch relaunches (new launchNonce) and its sequence resets to 1.
+        // These must be treated as distinct commands even though the sequence
+        // number collides — this is the FIX 5 cross-launch collision case.
+        let store = InMemoryPlaybackStore()
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
+        let mgr = PhoneSessionManager(engine: engine)
+        mgr.handleWatchCommandForTesting(["command": "adjustBPM", "count": 3, "commandId": "launchA-1"])
+        mgr.handleWatchCommandForTesting(["command": "adjustBPM", "count": 3, "commandId": "launchB-1"])
+        XCTAssertEqual(store.state.bpm, 186,
+                       "same sequence from a different launch must apply, not be dropped as a duplicate")
+    }
+
+    // MARK: - Change-gated reconcile (FIX 3)
+
+    func testReconcileSkipsUnchangedState() {
+        let store = InMemoryPlaybackStore(AppState(version: 2, bpm: 185, isPlaying: false))
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
+        let mgr = PhoneSessionManager(engine: engine)
+        mgr.sendStateToWatch()   // establishes last-sent baseline
+        XCTAssertFalse(mgr.reconcileTickForTesting(),
+                       "reconcile must not re-send when state is unchanged")
+    }
+
+    func testReconcileResendsAfterChange() {
+        let store = InMemoryPlaybackStore(AppState(version: 2, bpm: 185, isPlaying: true))
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
+        let mgr = PhoneSessionManager(engine: engine)
+        // Prime lastSentPlayingState so a subsequent bpm-only change takes the
+        // publisher's debounce path (no synchronous re-send), keeping the
+        // reconcile-gate assertion deterministic.
+        engine.togglePlayback()
+        mgr.sendStateToWatch()
+        XCTAssertFalse(mgr.reconcileTickForTesting())
+        engine.incrementBPM()    // bpm-only change → debounced, not yet re-sent
+        XCTAssertTrue(mgr.reconcileTickForTesting(),
+                      "reconcile should re-send after an unsent state change")
     }
 
     func testCommandWithoutCommandIdStillApplies() {

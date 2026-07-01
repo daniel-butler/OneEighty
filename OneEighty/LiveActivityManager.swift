@@ -33,8 +33,17 @@ final class LiveActivityManager {
     private(set) var lastSentState: OneEightyActivityAttributes.ContentState?
     private(set) var confirmedState: PlaybackStateSnapshot?
 
-    static func makeForTesting(store: PlaybackStore) -> LiveActivityManager {
-        LiveActivityManager(store: store)
+    /// Latest NORMAL (bpm-only) update deferred while throttled. Coalesced into
+    /// a single push when `coalesceTimer` fires. Only the most recent value is
+    /// kept — intermediate bpm values in a burst are dropped, which is correct
+    /// for a metronome display.
+    private var pendingState: AppState?
+    private var coalesceTimer: Timer?
+
+    static func makeForTesting(store: PlaybackStore, tracker: ActivityUpdateTracker? = nil) -> LiveActivityManager {
+        let manager = LiveActivityManager(store: store)
+        if let tracker { manager.tracker = tracker }
+        return manager
     }
 
     private init(store: PlaybackStore) {
@@ -42,17 +51,70 @@ final class LiveActivityManager {
         tracker = ActivityUpdateTracker()
     }
 
-    /// Single entry point. Pushes only if `state.version` hasn't already been
-    /// claimed (the store's cross-process dedupe + budget gate). Echo
-    /// suppression and client-side coalescing are gone — correctness comes
-    /// from the version check, not from timing.
+    /// Single entry point. Correctness (no duplicate pushes across processes)
+    /// comes from the store's version claim, NOT from timing — echo suppression
+    /// is gone. Budget throttling is a real ActivityKit OS constraint, so it is
+    /// reinstated here as a coalescing gate for NORMAL (bpm-only) updates.
+    ///
+    /// - CRITICAL updates (an isPlaying transition) ALWAYS push immediately.
+    /// - NORMAL updates push immediately unless throttled/over-budget, in which
+    ///   case the latest value is coalesced and flushed by a single timer.
+    ///
+    /// The version claim happens at the moment of the ACTUAL push (see
+    /// `pushIfClaimed`), so a coalesced/newer push claims the newer version and
+    /// a superseded pending push is dropped when its (older) version is rejected.
     func apply(_ state: AppState) {
-        guard store.claimActivityPush(version: state.version, at: Date()) else { return }
+        // No activity yet: start it. This is effectively the first (critical) push.
         guard currentActivity != nil else {
+            guard store.claimActivityPush(version: state.version, at: Date()) else { return }
             startActivity(bpm: state.bpm, isPlaying: state.isPlaying)
             tracker.recordUpdate()
             return
         }
+
+        let isCritical = state.isPlaying != lastSentState?.isPlaying
+
+        if isCritical {
+            // Play/stop transitions bypass all throttling and supersede any
+            // pending coalesced bpm update.
+            coalesceTimer?.invalidate()
+            coalesceTimer = nil
+            pendingState = nil
+            pushIfClaimed(state)
+            return
+        }
+
+        // NORMAL (bpm-only) update.
+        if tracker.shouldThrottle(priority: .normal) {
+            // Over budget / too soon: coalesce the latest value and ensure a
+            // single flush timer is scheduled at the current effective interval.
+            pendingState = state
+            if coalesceTimer == nil {
+                let interval = tracker.effectiveInterval()
+                coalesceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.flushPending()
+                    }
+                }
+            }
+        } else {
+            pushIfClaimed(state)
+        }
+    }
+
+    /// Fires when the coalescing window elapses: push the latest pending value.
+    private func flushPending() {
+        coalesceTimer = nil
+        guard let state = pendingState else { return }
+        pendingState = nil
+        pushIfClaimed(state)
+    }
+
+    /// Claim the version at push time (cross-process dedupe), then record the
+    /// budget update and push. If the version was already claimed (e.g. a newer
+    /// critical push raced ahead of a coalesced one), this is a no-op.
+    private func pushIfClaimed(_ state: AppState) {
+        guard store.claimActivityPush(version: state.version, at: Date()) else { return }
         tracker.recordUpdate()
         push(PlaybackStateSnapshot(bpm: state.bpm, isPlaying: state.isPlaying))
     }
@@ -79,6 +141,9 @@ final class LiveActivityManager {
         }
         contentUpdateTask?.cancel()
         contentUpdateTask = nil
+        coalesceTimer?.invalidate()
+        coalesceTimer = nil
+        pendingState = nil
         currentActivity = nil
         lastSentState = nil
         confirmedState = nil

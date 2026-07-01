@@ -43,9 +43,15 @@ final class WatchSessionManager: NSObject {
     /// (acked via reply, failed via error, or resolved as fire-and-forget).
     private var inFlight = 0
 
-    /// Monotonic id attached to each outbound command, paired with the
-    /// phone's commandId dedupe (PhoneSessionManager.seenCommandIds).
-    private var nextCommandId = 0
+    /// Per-launch nonce combined into every outbound command id so ids are
+    /// unique across watch relaunches. Without it, the sequence resets to 1 on
+    /// relaunch and collides with ids the (still-alive) phone process already
+    /// dedupes, dropping the first post-relaunch taps. Paired with the phone's
+    /// commandId dedupe (PhoneSessionManager.seenCommandIds).
+    private let launchNonce = UUID().uuidString
+
+    /// Monotonic per-launch sequence; combined with `launchNonce` in mintCommandId.
+    private var nextCommandSeq = 0
 
     /// Number of optimistic edits (incrementBPM/decrementBPM taps) folded
     /// into the not-yet-sent, debounced batch delta. All of them resolve
@@ -150,10 +156,14 @@ final class WatchSessionManager: NSObject {
 
     // MARK: - In-Flight Command Tracking
 
-    private func mintCommandId() -> Int {
-        nextCommandId += 1
-        return nextCommandId
+    private func mintCommandId() -> String {
+        nextCommandSeq += 1
+        return "\(launchNonce)-\(nextCommandSeq)"
     }
+
+    /// Test seam — exposes the minted compound id so uniqueness within and
+    /// across launches can be asserted.
+    func mintCommandIdForTesting() -> String { mintCommandId() }
 
     private func beginCommand(count: Int = 1) {
         inFlight += count
@@ -192,7 +202,7 @@ final class WatchSessionManager: NSObject {
     /// optimistic value rather than snapping to stale authoritative state.
     func resolveQueuedSendForTesting(count: Int = 1) { endCommand(success: true, count: count, adopt: false) }
 
-    private func sendCommand(_ command: String, commandId: Int, extra: [String: Any] = [:], resolveCount: Int = 1) {
+    private func sendCommand(_ command: String, commandId: String, extra: [String: Any] = [:], resolveCount: Int = 1) {
         guard let session = wcSession else {
             logger.warning("No WCSession — command \(command) dropped")
             // No session means the command is truly dropped — it will never
