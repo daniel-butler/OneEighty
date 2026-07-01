@@ -114,8 +114,6 @@
 				OneEightyActivityAttributes.swift,
 				OneEightyIntents.swift,
 				PlaybackStore.swift,
-				SharedStateStore.swift,
-				StateStore.swift,
 			);
 			target = 6FCE596B2EFB75690083AC60 /* OneEightyWidgetExtension */;
 		};

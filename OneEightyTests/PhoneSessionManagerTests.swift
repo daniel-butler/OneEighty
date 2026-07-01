@@ -26,7 +26,7 @@ final class PhoneSessionManagerTests: XCTestCase {
 
     func testToggleCommandStartsPlayback() {
         XCTAssertFalse(engine.isPlaying)
-        engine.ensureReady()
+        engine.hydrate()
         engine.togglePlayback()
         XCTAssertTrue(engine.isPlaying)
     }

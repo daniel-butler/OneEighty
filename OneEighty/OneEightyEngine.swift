@@ -18,8 +18,9 @@ import os
 
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "OneEightyEngine")
 
-/// Transitional type — kept until PhoneSessionManager/LiveActivityManager/StateSubscriber
-/// migrate off it (final cleanup task). New code uses AppState.
+/// Transitional type — still consumed by PhoneSessionManager and StateSubscriber
+/// (watch-sync reconciliation). LiveActivityManager has fully migrated off it onto
+/// AppState / PlaybackStateSnapshot. Kept intentionally; not dead code.
 struct PlaybackState: Equatable {
     let bpm: Int
     let isPlaying: Bool
@@ -225,10 +226,5 @@ final class OneEightyEngine {
         infoCenter.playbackState = isPlaying ? .playing : .paused
     }
 
-    // MARK: - Compatibility shims (removed in the final cleanup task)
-    // Keep ContentView / PhoneSessionManager compiling until Stages 3–4 migrate them.
     @ObservationIgnored private var hydrated = false
-    func setup() { ensureReady() }
-    func teardown() {}
-    func ensureReady() { hydrate() }
 }

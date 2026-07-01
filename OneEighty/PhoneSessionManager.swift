@@ -222,7 +222,7 @@ extension PhoneSessionManager: WCSessionDelegate {
         logger.info("Received watch command: \(command)")
 
         // Ensure engine is ready — handles background wake when UI hasn't appeared
-        engine.ensureReady()
+        engine.hydrate()
 
         switch command {
         case "start":
