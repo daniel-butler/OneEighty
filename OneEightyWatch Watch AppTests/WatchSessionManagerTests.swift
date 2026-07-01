@@ -89,64 +89,47 @@ final class WatchSessionManagerTests: XCTestCase {
         XCTAssertEqual(session.bpm, 230, "Rapid increments should clamp at 230")
     }
 
-    // MARK: - Inbound Cooldown
+    // MARK: - In-Flight Command Tracking (Task 15)
 
-    func testIncrementSetsCoolingDown() {
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown, "incrementBPM should activate cooldown")
+    func testOptimisticHeldWhileCommandInFlight() {
+        let m = WatchSessionManager()
+        m.incrementBPM()                                  // optimistic 181, in-flight 1
+        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(3)])
+        XCTAssertEqual(m.bpm, 181)                        // ignored while in-flight
     }
 
-    func testDecrementSetsCoolingDown() {
-        session.decrementBPM()
-        XCTAssertTrue(session.isCoolingDown, "decrementBPM should activate cooldown")
+    func testSnapsToAuthoritativeWhenQuiescent() {
+        let m = WatchSessionManager()
+        m.incrementBPM()
+        m.ackInFlightForTesting()                         // command acked → in-flight 0
+        m.applyState(["bpm": 200, "isPlaying": true, "version": UInt64(9)])
+        XCTAssertEqual(m.bpm, 200)                        // adopts latest authoritative
+        XCTAssertTrue(m.isPlaying)
     }
 
-    func testCooldownExpiresAfterDelay() {
-        let expectation = expectation(description: "Cooldown expires")
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
-
-        // Cooldown is 200ms — wait 300ms to be safe
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertFalse(session.isCoolingDown, "Cooldown should expire after 200ms")
+    func testLostOptimisticEditSelfHeals() {
+        let m = WatchSessionManager()
+        m.incrementBPM()                                  // optimistic 181
+        m.failInFlightForTesting()                        // command failed → revert + quiescent
+        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(3)])
+        XCTAssertEqual(m.bpm, 180)                        // healed back to truth
     }
 
-    func testApplyStateIgnoresBPMDuringCooldown() {
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
-        let bpmAfterIncrement = session.bpm
-
-        // Simulate stale echo from phone
-        session.applyState(["bpm": 170, "isPlaying": false])
-        XCTAssertEqual(session.bpm, bpmAfterIncrement, "BPM should be ignored during cooldown")
-    }
-
-    func testApplyStateAcceptsIsPlayingDuringCooldown() {
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
-        XCTAssertFalse(session.isPlaying)
-
-        // Play/stop should always be applied, even during cooldown
+    func testApplyStateIgnoredWithoutVersion() {
+        // Messages missing a version (malformed / legacy) must not be applied.
         session.applyState(["bpm": 170, "isPlaying": true])
-        XCTAssertTrue(session.isPlaying, "isPlaying should be applied even during cooldown")
+        XCTAssertEqual(session.bpm, 180)
+        XCTAssertFalse(session.isPlaying)
     }
 
-    func testApplyStateAcceptsBPMAfterCooldownExpires() {
-        let expectation = expectation(description: "Cooldown expires")
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertFalse(session.isCoolingDown)
-
-        session.applyState(["bpm": 200, "isPlaying": false])
-        XCTAssertEqual(session.bpm, 200, "BPM should be applied after cooldown expires")
+    func testApplyStateKeepsHighestVersionAsAuthoritative() {
+        let m = WatchSessionManager()
+        m.incrementBPM()                                  // in-flight 1, optimistic 181
+        m.applyState(["bpm": 200, "isPlaying": true, "version": UInt64(5)])
+        m.applyState(["bpm": 170, "isPlaying": false, "version": UInt64(2)])  // stale, out of order
+        m.ackInFlightForTesting()
+        XCTAssertEqual(m.bpm, 200, "should adopt the highest-version snapshot seen while in-flight, not the last one received")
+        XCTAssertTrue(m.isPlaying)
     }
 
     // MARK: - Rapid Operations (existing)
