@@ -108,9 +108,13 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				ActivityUpdateTracker.swift,
+				AppGroupPlaybackStore.swift,
+				AppState.swift,
 				IntentActivityDebouncer.swift,
+				LiveActivityManager.swift,
 				OneEightyActivityAttributes.swift,
 				OneEightyIntents.swift,
+				PlaybackStore.swift,
 				SharedStateStore.swift,
 				StateStore.swift,
 			);
