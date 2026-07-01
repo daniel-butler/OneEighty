@@ -11,7 +11,9 @@
 
 import Combine
 import Foundation
+import MediaPlayer
 import Observation
+import UIKit
 import os
 
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "OneEightyEngine")
@@ -77,12 +79,26 @@ final class OneEightyEngine {
         store.statePublisher
             .sink { [weak self] state in self?.syncFromStore(state) }
             .store(in: &bag)
+        startObservingInterruptions()
+        setupRemoteCommands()
+    }
+
+    /// Called from the UI launch path (ContentView.onAppear). On a genuine cold
+    /// launch, audio is not yet running, so reset desired playback to stopped —
+    /// the app never auto-starts sound on open. If an AudioPlaybackIntent already
+    /// started audio in this process, `audio.isRunning` is true and we preserve it.
+    func hydrateForUILaunch() {
+        if !audio.isRunning {
+            store.mutate { $0.isPlaying = false }
+        }
+        hydrate()
     }
 
     private func syncFromStore(_ state: AppState) {
         bpm = state.bpm
         isPlaying = state.isPlaying
         reconcileAudio()
+        updateNowPlaying()
     }
 
     /// Idempotent: drive audio to match desired state. Rolls back on start failure.
@@ -108,6 +124,100 @@ final class OneEightyEngine {
     func incrementBPM() { store.mutate { $0.bpm += 1 } }
     func decrementBPM() { store.mutate { $0.bpm -= 1 } }
     func setVolume(_ newVolume: Float) { volume = max(0, min(1, newVolume)) }
+
+    // MARK: - Interruptions
+    @ObservationIgnored private var wasPlayingBeforeInterruption = false
+    @ObservationIgnored private var isSessionInterrupted = false
+
+    func startObservingInterruptions() {
+        let nc = NotificationCenter.default
+        nc.addObserver(self, selector: #selector(onInterruptionBegan), name: .audioInterruptionBegan, object: nil)
+        nc.addObserver(self, selector: #selector(onInterruptionEnded), name: .audioInterruptionEnded, object: nil)
+        nc.addObserver(self, selector: #selector(onDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    @objc private func onInterruptionBegan() {
+        Task { @MainActor in
+            if !isSessionInterrupted { wasPlayingBeforeInterruption = isPlaying }
+            isSessionInterrupted = true
+            guard isPlaying else { return }
+            store.mutate { $0.isPlaying = false }
+        }
+    }
+
+    @objc private func onInterruptionEnded() {
+        Task { @MainActor in
+            isSessionInterrupted = false
+            guard wasPlayingBeforeInterruption, !isPlaying else { wasPlayingBeforeInterruption = false; return }
+            wasPlayingBeforeInterruption = false
+            AudioSessionManager.shared.activate()
+            store.mutate { $0.isPlaying = true }
+        }
+    }
+
+    @objc private func onDidBecomeActive() {
+        Task { @MainActor in
+            guard wasPlayingBeforeInterruption, !isPlaying, isSessionInterrupted else { return }
+            wasPlayingBeforeInterruption = false
+            isSessionInterrupted = false
+            AudioSessionManager.shared.activate()
+            store.mutate { $0.isPlaying = true }
+        }
+    }
+
+    // MARK: - Now Playing
+
+    private func setupRemoteCommands() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isPlaying else { return }
+                self.togglePlayback()
+            }
+            return .success
+        }
+
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isPlaying else { return }
+                self.togglePlayback()
+            }
+            return .success
+        }
+
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.togglePlayback()
+            }
+            return .success
+        }
+
+        // Repurpose next/previous track for BPM +/-
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.incrementBPM()
+            }
+            return .success
+        }
+
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.decrementBPM()
+            }
+            return .success
+        }
+    }
+
+    private func updateNowPlaying() {
+        let infoCenter = MPNowPlayingInfoCenter.default()
+        infoCenter.nowPlayingInfo = [
+            MPMediaItemPropertyTitle: "\(bpm) SPM",
+            MPMediaItemPropertyArtist: isPlaying ? "Playing" : "Stopped",
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+        ]
+        infoCenter.playbackState = isPlaying ? .playing : .paused
+    }
 
     // MARK: - Compatibility shims (removed in the final cleanup task)
     // Keep ContentView / PhoneSessionManager compiling until Stages 3–4 migrate them.

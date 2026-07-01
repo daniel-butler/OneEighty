@@ -106,12 +106,8 @@ struct ContentView: View {
             .padding(.bottom, 40)
         }
         .onAppear {
-            logger.info("onAppear — setting up engine")
-            engine.setup()
-        }
-        .onDisappear {
-            logger.info("onDisappear — tearing down engine")
-            engine.teardown()
+            logger.info("onAppear — hydrating engine for UI launch")
+            engine.hydrateForUILaunch()
         }
     }
 
