@@ -1056,20 +1056,44 @@ control calls to the new methods (`togglePlayback`, `incrementBPM`, `decrementBP
 and call `updateNowPlaying()` inside `syncFromStore`. Import `MediaPlayer` and `UIKit`.
 Call `startObservingInterruptions()` and `setupRemoteCommands()` at the end of `hydrate()`.
 
-- [ ] **Step 2: Point the app at the new store/engine**
+- [ ] **Step 2: Cold-launch "start stopped" + app wiring**
 
-In `OneEightyApp.swift`, replace the reset-state block and remove the
-`AudioSessionManager` note only if still valid; change `ContentView.onAppear` to
-call `engine.hydrate()` and `onDisappear` to a no-op (teardown removed — the
-engine now lives for the app lifetime). Concretely, `ContentView`:
+**Product decision (approved):** when the user opens the app on a fresh cold
+launch, the metronome must start STOPPED — it must never begin ticking on its own
+just because `isPlaying` was persisted `true` (e.g. the app was force-quit while
+playing). BUT this must NOT cancel playback that an `AudioPlaybackIntent` started
+in this same process (Task 12), where the system launches the app specifically to
+play. The distinguishing signal is `audio.isRunning`: on a fresh UI launch it is
+false; if an intent already started audio in this process it is true.
+
+Keep `hydrate()` PURE (mirror + subscribe + reconcile + observers) so the Task 7
+unit tests remain valid. Add a SEPARATE UI-launch entry point that applies the
+cold-launch reset, then hydrates:
 
 ```swift
-        .onAppear { engine.hydrate() }
+    /// Called from the UI launch path (ContentView.onAppear). On a genuine cold
+    /// launch, audio is not yet running, so reset desired playback to stopped —
+    /// the app never auto-starts sound on open. If an AudioPlaybackIntent already
+    /// started audio in this process, `audio.isRunning` is true and we preserve it.
+    func hydrateForUILaunch() {
+        if !audio.isRunning {
+            store.mutate { $0.isPlaying = false }
+        }
+        hydrate()
+    }
+```
+
+Change `ContentView` to call it (and drop the old `onDisappear` teardown — the
+engine lives for the app lifetime):
+
+```swift
+        .onAppear { engine.hydrateForUILaunch() }
         // remove the old .onDisappear teardown
 ```
 
-In `OneEightyApp.init`, keep the `--reset-state` support by deleting the state
-file and volume key:
+`OneEightyApp.init`'s `--reset-state` support (deleting `state.json` + the
+`volume` key, and constructing the engine after the reset) was already added in
+Task 7 — leave it in place; verify it still reads:
 
 ```swift
         if ProcessInfo.processInfo.arguments.contains("--reset-state") {
@@ -1110,8 +1134,61 @@ final class EngineInterruptionTests: XCTestCase {
         XCTAssertTrue(store.state.isPlaying)
         XCTAssertTrue(audio.isRunning)
     }
+
+    func testUILaunchStartsStoppedEvenIfPersistedPlaying() {
+        // App was killed while playing; a fresh UI launch must start stopped.
+        let store = InMemoryPlaybackStore(AppState(version: 5, bpm: 200, isPlaying: true))
+        let audio = FakeAudioOutput()   // fresh: not running
+        let engine = OneEightyEngine(store: store, audio: audio)
+        engine.hydrateForUILaunch()
+        XCTAssertFalse(store.state.isPlaying)
+        XCTAssertFalse(audio.isRunning)
+        XCTAssertEqual(store.state.bpm, 200)   // tempo is preserved; only playback resets
+    }
+
+    func testUILaunchPreservesIntentStartedPlayback() {
+        // An AudioPlaybackIntent already started audio in this process.
+        let store = InMemoryPlaybackStore(AppState(version: 2, bpm: 190, isPlaying: true))
+        let audio = FakeAudioOutput()
+        let engine = OneEightyEngine(store: store, audio: audio)
+        engine.hydrate()                      // intent path: audio starts, isRunning == true
+        XCTAssertTrue(audio.isRunning)
+        engine.hydrateForUILaunch()           // user then opens the UI
+        XCTAssertTrue(store.state.isPlaying)  // playback preserved, not reset
+        XCTAssertTrue(audio.isRunning)
+    }
 }
 ```
+
+- [ ] **Step 3b: Re-add Now Playing coverage**
+
+`NowPlayingTests` was deleted in Task 7 (Now Playing was removed from the engine
+there). Now that `updateNowPlaying()` is restored, add a focused test that it
+reflects engine state. Create `OneEightyTests/NowPlayingTests.swift`:
+
+```swift
+//  NowPlayingTests.swift
+import XCTest
+import MediaPlayer
+@testable import OneEighty
+
+@MainActor
+final class NowPlayingTests: XCTestCase {
+    func testNowPlayingReflectsStateAfterSync() {
+        let store = InMemoryPlaybackStore(AppState(version: 1, bpm: 200, isPlaying: true))
+        let engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()   // syncFromStore calls updateNowPlaying()
+        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        XCTAssertEqual(info?[MPMediaItemPropertyTitle] as? String, "200 SPM")
+        XCTAssertEqual(info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 1.0)
+    }
+}
+```
+
+If the restored `updateNowPlaying()` uses different title/artist formatting than
+the old engine, match the old format (title `"<bpm> SPM"`, artist `"Playing"`/
+`"Stopped"`, playback rate `1.0`/`0.0`) and adjust the assertions to the exact
+strings you implement.
 
 - [ ] **Step 4: Build + full test suite**
 
