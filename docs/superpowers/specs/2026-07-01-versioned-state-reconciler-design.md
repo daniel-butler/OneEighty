@@ -3,10 +3,11 @@
 **Date:** 2026-07-01
 **Status:** Approved (design), pending implementation plan
 **Scope:** Structural core + quick-win bug fixes. Robustness items are a deliberate follow-up.
-**Revision:** v2 — reworked after a cold design review. Changes: volume removed from
+**Revision:** v3 — reworked after a cold design review. Changes: volume removed from
 versioned state; watch redesigned around in-flight-command tracking (not version-gating);
 mutation threading contract specified; Live Activity budget/dedupe made cross-process;
-staged rollout with the watch last; honest about suspended-app playback.
+staged rollout with the watch last; play/stop/toggle intents conform to
+`AudioPlaybackIntent` so widget playback starts audio even when the app is suspended.
 
 ## Problem
 
@@ -154,16 +155,15 @@ func reconcileAudio(to state: AppState) {
   engine rolls desired `isPlaying` back to `false` via `mutate`, so surfaces
   reflect reality.
 
-**Honest limit (was over-claimed):** audio only runs in the app process. When
-the app is suspended or terminated, a widget/extension setting `isPlaying=true`
-posts a Darwin wake that **does not resume the app**, so desired can read
-"playing" while no sound plays and no reconciler runs. This design makes state
-*consistent*; it does not by itself make a suspended app produce audio. Starting
-audio from a widget while suspended requires conforming the play intent to
-`AudioPlaybackIntent` — see "Open question / scope" below. The
-"isPlaying-true-but-silent" bug is therefore only retired for the
-app-process-running case; the suspended-play path is called out explicitly rather
-than claimed fixed.
+**Suspended-app playback:** audio only runs in the app process, and a bare Darwin
+wake does **not** resume a suspended app. To make widget/Live-Activity "play"
+actually produce sound, the play/stop/toggle intents conform to
+`AudioPlaybackIntent` (see "Intents"). The system runs those intents **in the app
+process**, launching/resuming it into an audio-producing state, so the reconciler
+is alive to start audio. Thus the "isPlaying-true-but-silent" divergence is
+retired including the suspended-play path. (A bpm-only change from the extension
+while stopped does not — and need not — wake audio; it is pure state that the app
+reconciles on next run.)
 
 ### Watch (WatchSessionManager + PhoneSessionManager) — redesigned
 
@@ -209,13 +209,25 @@ It does not read the app-group store. Design:
 
 Projections of the same versioned state.
 
-### Intents (widget extension)
+### Intents
 
-Each intent becomes `store.mutate { $0.bpm = clamp($0.bpm + 1) }` (absolute,
-coordinated, version-bumped), then projects the **post-mutation actual value** to
-the Live Activity via the cross-process dedupe path — no `store.bpm + 1` estimate
-that diverges on rapid taps. The Darwin wake lets the app reconcile audio if it
-is running.
+Two categories, by whether they start/stop audio:
+
+- **Play / Stop / Toggle** conform to **`AudioPlaybackIntent`**. The system runs
+  these **in the app process**, resuming the app into an audio-producing state.
+  They call `store.mutate { $0.isPlaying = … }`; the engine reconciler (now alive)
+  starts/stops audio. This is what makes widget playback work while suspended.
+- **Increment / Decrement BPM** run in the widget extension. Each becomes
+  `store.mutate { $0.bpm = clamp($0.bpm + 1) }` (absolute, coordinated,
+  version-bumped), then projects the **post-mutation actual value** to the Live
+  Activity via the cross-process dedupe path — no `store.bpm + 1` estimate that
+  diverges on rapid taps. If the app is running (background audio while playing),
+  the Darwin wake makes it reconcile the new tempo.
+
+**Requirements:** the app already declares the background audio mode (metronome
+playback). `AudioPlaybackIntent` conformance plus that entitlement lets the play
+intents start the session from the background. Background audio *start* is
+device-only behavior for testing (the simulator does not faithfully reproduce it).
 
 ## Data flow
 
@@ -257,6 +269,9 @@ The cross-process layer is currently untested (`InMemoryStateStore` bypasses it)
 - **Reconciler tests:** introduce a small `AudioOutput` protocol seam so
   `reconcileAudio` idempotency is testable without hardware (also improves
   isolation).
+- **Intent tests:** play/stop/toggle intents mutate desired state and invoke the
+  reconciler; bpm intents produce absolute mutations. Background-audio *start*
+  from a suspended app is verified manually on device (simulator is unreliable).
 
 ## Migration
 
@@ -278,7 +293,8 @@ is staged rather than big-bang:
 2. **Engine → reconciler:** single hydration path, `reconcileAudio`, roll-back on
    failure. Now-Playing and Live Activity (single-process behavior) follow.
 3. **Live Activity + intents cross-process:** store-persisted dedupe/budget;
-   intents to absolute mutations.
+   bpm intents to absolute mutations; play/stop/toggle intents conform to
+   `AudioPlaybackIntent` (verify background audio start on device).
 4. **Watch last:** command-id + in-flight tracking + versioned WCSession
    payloads + phone reconcile. Isolated so a watch bug is not confused with a
    store bug.
@@ -289,16 +305,8 @@ Structural core + quick wins: wrong-tempo-on-wake, sticky stale BPM on watch,
 double-toggle transport mismatch, double ActivityKit push, split-brain budget
 accounting, `pendingBPMDelta` RMW race, start/stop reorder, non-idempotent
 command double-apply, missing watch reconciliation, intent BPM estimate
-divergence, isPlaying-true-but-silent (**app-process-running case only** — see
-the honest limit under "Reconciler").
-
-## Open question / scope
-
-**Widget-initiated play while the app is suspended.** Making a widget/Live
-Activity "play" actually produce sound when the app isn't running requires
-conforming the play intent to `AudioPlaybackIntent` (which lets the system start
-background audio for the app). This is a feature, not a consistency fix. Decide
-whether it belongs in this plan or the robustness follow-up.
+divergence, isPlaying-true-but-silent (including widget-initiated play while the
+app is suspended, via `AudioPlaybackIntent`).
 
 ## Explicitly out of scope (follow-up plan)
 
