@@ -25,20 +25,19 @@ import XCTest
 @MainActor
 final class WatchSyncBounceBackTests: XCTestCase {
 
-    private var store: InMemoryStateStore!
+    private var store: InMemoryPlaybackStore!
     private var engine: OneEightyEngine!
     private var cancellables: Set<AnyCancellable>!
 
     override func setUp() {
-        store = InMemoryStateStore()
-        engine = OneEightyEngine(store: store)
-        engine.setup()
+        store = InMemoryPlaybackStore()
+        engine = OneEightyEngine(store: store, audio: FakeAudioOutput())
+        engine.hydrate()
         cancellables = []
     }
 
     override func tearDown() {
         cancellables.removeAll()
-        engine.teardown()
         engine = nil
         store = nil
     }

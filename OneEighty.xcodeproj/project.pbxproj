@@ -108,11 +108,12 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				ActivityUpdateTracker.swift,
-				IntentActivityDebouncer.swift,
+				AppGroupPlaybackStore.swift,
+				AppState.swift,
+				LiveActivityManager.swift,
 				OneEightyActivityAttributes.swift,
 				OneEightyIntents.swift,
-				SharedStateStore.swift,
-				StateStore.swift,
+				PlaybackStore.swift,
 			);
 			target = 6FCE596B2EFB75690083AC60 /* OneEightyWidgetExtension */;
 		};

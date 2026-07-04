@@ -11,54 +11,44 @@ import os
 
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "Intents")
 
-struct ToggleOneEightyIntent: AppIntent {
+struct ToggleOneEightyIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Toggle OneEighty"
     static var description = IntentDescription("Toggles metronome playback on/off")
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let store = SharedStateStore.shared
-        let wasPlaying = store.isPlaying
-        let nowPlaying = !wasPlaying
-        logger.info("ToggleOneEightyIntent — wasPlaying=\(wasPlaying), nowPlaying=\(nowPlaying)")
-
-        store.isPlaying = nowPlaying
-        let bpm = store.bpm
-        IntentActivityDebouncer.shared.submit(bpm: bpm, isPlaying: nowPlaying, priority: .critical)
-
-        store.postCommand(nowPlaying ? .start : .stop)
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.isPlaying.toggle() }
+        logger.info("ToggleOneEightyIntent — isPlaying=\(store.state.isPlaying)")
+        LiveActivityManager.shared.apply(store.state)
         return .result()
     }
 }
 
-struct StartOneEightyIntent: AppIntent {
+struct StartOneEightyIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Start OneEighty"
     static var description = IntentDescription("Starts the metronome playback")
 
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StartOneEightyIntent.perform()")
-        let store = SharedStateStore.shared
-        store.isPlaying = true
-        let bpm = store.bpm
-        IntentActivityDebouncer.shared.submit(bpm: bpm, isPlaying: true, priority: .critical)
-        store.postCommand(.start)
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.isPlaying = true }
+        LiveActivityManager.shared.apply(store.state)
         return .result()
     }
 }
 
-struct StopOneEightyIntent: AppIntent {
+struct StopOneEightyIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Stop OneEighty"
     static var description = IntentDescription("Stops the metronome playback")
 
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("StopOneEightyIntent.perform()")
-        let store = SharedStateStore.shared
-        store.isPlaying = false
-        let bpm = store.bpm
-        IntentActivityDebouncer.shared.submit(bpm: bpm, isPlaying: false, priority: .critical)
-        store.postCommand(.stop)
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.isPlaying = false }
+        LiveActivityManager.shared.apply(store.state)
         return .result()
     }
 }
@@ -69,13 +59,10 @@ struct IncrementBPMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let store = SharedStateStore.shared
-        logger.info("IncrementBPMIntent — posting adjustBPM(+1)")
-        store.postCommand(.adjustBPM(1))
-        // Widget extension fallback: estimate new BPM for direct ActivityKit push
-        let newBPM = min(230, store.bpm + 1)
-        let isPlaying = store.isPlaying
-        IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
+        logger.info("IncrementBPMIntent — mutating store absolutely")
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.bpm += 1 }
+        LiveActivityManager.shared.apply(store.state)   // post-mutation actual value
         return .result()
     }
 }
@@ -86,13 +73,10 @@ struct DecrementBPMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let store = SharedStateStore.shared
-        logger.info("DecrementBPMIntent — posting adjustBPM(-1)")
-        store.postCommand(.adjustBPM(-1))
-        // Widget extension fallback: estimate new BPM for direct ActivityKit push
-        let newBPM = max(150, store.bpm - 1)
-        let isPlaying = store.isPlaying
-        IntentActivityDebouncer.shared.submit(bpm: newBPM, isPlaying: isPlaying, priority: .normal)
+        logger.info("DecrementBPMIntent — mutating store absolutely")
+        let store = AppGroupPlaybackStore.shared
+        store.mutate { $0.bpm -= 1 }
+        LiveActivityManager.shared.apply(store.state)
         return .result()
     }
 }

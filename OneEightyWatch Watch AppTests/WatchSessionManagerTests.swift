@@ -89,64 +89,115 @@ final class WatchSessionManagerTests: XCTestCase {
         XCTAssertEqual(session.bpm, 230, "Rapid increments should clamp at 230")
     }
 
-    // MARK: - Inbound Cooldown
+    // MARK: - In-Flight Command Tracking (Task 15)
 
-    func testIncrementSetsCoolingDown() {
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown, "incrementBPM should activate cooldown")
+    func testOptimisticHeldWhileCommandInFlight() {
+        let m = WatchSessionManager()
+        m.incrementBPM()                                  // optimistic 181, in-flight 1
+        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(3)])
+        XCTAssertEqual(m.bpm, 181)                        // ignored while in-flight
     }
 
-    func testDecrementSetsCoolingDown() {
-        session.decrementBPM()
-        XCTAssertTrue(session.isCoolingDown, "decrementBPM should activate cooldown")
+    func testSnapsToAuthoritativeWhenQuiescent() {
+        let m = WatchSessionManager()
+        m.incrementBPM()
+        m.ackInFlightForTesting()                         // command acked → in-flight 0
+        m.applyState(["bpm": 200, "isPlaying": true, "version": UInt64(9)])
+        XCTAssertEqual(m.bpm, 200)                        // adopts latest authoritative
+        XCTAssertTrue(m.isPlaying)
     }
 
-    func testCooldownExpiresAfterDelay() {
-        let expectation = expectation(description: "Cooldown expires")
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
-
-        // Cooldown is 200ms — wait 300ms to be safe
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertFalse(session.isCoolingDown, "Cooldown should expire after 200ms")
+    func testLostOptimisticEditSelfHeals() {
+        let m = WatchSessionManager()
+        // Seed an authoritative snapshot BEFORE the failure so the revert
+        // path is actually exercised (latestAuthoritative must be non-nil
+        // at failure time, or the revert is a no-op).
+        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(3)])
+        XCTAssertEqual(m.bpm, 180)                        // quiescent, so this applies immediately
+        m.incrementBPM()                                  // optimistic 181
+        m.failInFlightForTesting()                        // command failed → revert + quiescent
+        XCTAssertEqual(m.bpm, 180)                        // healed back to truth
     }
 
-    func testApplyStateIgnoresBPMDuringCooldown() {
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
-        let bpmAfterIncrement = session.bpm
-
-        // Simulate stale echo from phone
-        session.applyState(["bpm": 170, "isPlaying": false])
-        XCTAssertEqual(session.bpm, bpmAfterIncrement, "BPM should be ignored during cooldown")
+    func testNetZeroBatchDoesNotLeakInFlight() {
+        let m = WatchSessionManager()
+        m.incrementBPM()                                  // optimistic 181, inFlight 1, batched +1
+        m.decrementBPM()                                  // optimistic 180, inFlight 2, batched net 0
+        XCTAssertTrue(m.hasPendingEdit)                    // holds still outstanding pre-flush
+        // Force the batch flush deterministically instead of waiting on the
+        // real 80ms timer.
+        m.flushAndInvalidateTimers()
+        XCTAssertFalse(m.hasPendingEdit, "net-zero batch must release its folded beginCommand holds, not leak them")
+        // Prove there's no leak: a fresh, higher-version authoritative state
+        // must now be adopted since in-flight is truly back to zero.
+        m.applyState(["bpm": 200, "isPlaying": true, "version": UInt64(9)])
+        XCTAssertEqual(m.bpm, 200)
+        XCTAssertTrue(m.isPlaying)
     }
 
-    func testApplyStateAcceptsIsPlayingDuringCooldown() {
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
-        XCTAssertFalse(session.isPlaying)
+    func testUnreachableSendKeepsOptimisticValue() {
+        let m = WatchSessionManager()
+        // Seed authoritative state while quiescent.
+        m.applyState(["bpm": 180, "isPlaying": false, "version": UInt64(1)])
+        XCTAssertEqual(m.bpm, 180)
+        m.incrementBPM()                                  // optimistic 181, inFlight 1
+        // Simulate the transferUserInfo (unreachable/queued) resolution: the
+        // command WILL apply later, so it resolves without adopting stale
+        // authoritative state.
+        m.resolveQueuedSendForTesting()
+        XCTAssertFalse(m.hasPendingEdit)
+        XCTAssertEqual(m.bpm, 181, "unreachable queued send must keep the optimistic value, not revert to stale authoritative")
+    }
 
-        // Play/stop should always be applied, even during cooldown
+    func testApplyStateIgnoredWithoutVersion() {
+        // Messages missing a version (malformed / legacy) must not be applied.
         session.applyState(["bpm": 170, "isPlaying": true])
-        XCTAssertTrue(session.isPlaying, "isPlaying should be applied even during cooldown")
+        XCTAssertEqual(session.bpm, 180)
+        XCTAssertFalse(session.isPlaying)
     }
 
-    func testApplyStateAcceptsBPMAfterCooldownExpires() {
-        let expectation = expectation(description: "Cooldown expires")
-        session.incrementBPM()
-        XCTAssertTrue(session.isCoolingDown)
+    func testApplyStateKeepsHighestVersionAsAuthoritative() {
+        let m = WatchSessionManager()
+        m.incrementBPM()                                  // in-flight 1, optimistic 181
+        m.applyState(["bpm": 200, "isPlaying": true, "version": UInt64(5)])
+        m.applyState(["bpm": 170, "isPlaying": false, "version": UInt64(2)])  // stale, out of order
+        m.ackInFlightForTesting()
+        XCTAssertEqual(m.bpm, 200, "should adopt the highest-version snapshot seen while in-flight, not the last one received")
+        XCTAssertTrue(m.isPlaying)
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertFalse(session.isCoolingDown)
+    // MARK: - WCSession-style Version Serialization Round-Trip
 
-        session.applyState(["bpm": 200, "isPlaying": false])
-        XCTAssertEqual(session.bpm, 200, "BPM should be applied after cooldown expires")
+    /// Every other `applyState` test hands a literal Swift `UInt64`, but a
+    /// real WCSession delivery boxes numeric payload values as `NSNumber`.
+    /// `applyState` drops the whole message if `version` isn't castable via
+    /// `as? UInt64` — this must succeed for an NSNumber-boxed value too, or
+    /// every real device message would be silently dropped.
+    func testApplyStateAcceptsWCSessionBridgedNSNumberVersion() {
+        let m = WatchSessionManager()
+        let message: [String: Any] = ["version": NSNumber(value: UInt64(9)), "bpm": 200, "isPlaying": true]
+        m.applyState(message)   // quiescent (no in-flight command) → adopts immediately
+        XCTAssertEqual(m.bpm, 200, "an NSNumber-boxed UInt64 version must not be dropped by the `as? UInt64` cast in applyState")
+        XCTAssertTrue(m.isPlaying)
+    }
+
+    func testApplyStateDropsMessageWithNonNumericVersion() {
+        let m = WatchSessionManager()
+        m.applyState(["version": "not-a-number", "bpm": 170, "isPlaying": true])
+        XCTAssertEqual(m.bpm, 180, "a non-numeric version must be dropped, leaving state unchanged")
+        XCTAssertFalse(m.isPlaying)
+    }
+
+    // MARK: - Command Id Uniqueness (FIX 5)
+
+    func testCommandIdsUniqueWithinAndAcrossLaunches() {
+        let a = WatchSessionManager()
+        let b = WatchSessionManager()   // simulates a relaunch (new launchNonce)
+        let a1 = a.mintCommandIdForTesting()
+        let a2 = a.mintCommandIdForTesting()
+        let b1 = b.mintCommandIdForTesting()
+        XCTAssertNotEqual(a1, a2, "sequential ids within a launch must differ")
+        XCTAssertNotEqual(a1, b1, "ids across launches must differ even at the same sequence")
     }
 
     // MARK: - Rapid Operations (existing)

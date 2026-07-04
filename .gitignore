@@ -1,2 +1,12 @@
 build/
 .idea
+
+# macOS
+.DS_Store
+
+# Xcode user-specific state
+**/xcuserdata/
+*.xcuserstate
+
+# SDD scratch (progress ledger, briefs, review packages)
+/.superpowers/

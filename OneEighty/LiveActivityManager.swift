@@ -8,44 +8,121 @@
 import ActivityKit
 import Foundation
 import os
-import UIKit
 
 private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "LiveActivity")
 
+/// Local content snapshot for pushing a Live Activity update. Distinct from
+/// the transitional `PlaybackState` (OneEightyEngine.swift) — this manager is
+/// fully migrated onto `AppState`/store-backed dedupe and no longer needs the
+/// shared transitional type.
+struct PlaybackStateSnapshot: Equatable {
+    let bpm: Int
+    let isPlaying: Bool
+}
+
 @MainActor
-final class LiveActivityManager: StateSubscriber {
-    static let shared = LiveActivityManager()
+final class LiveActivityManager {
+    static let shared = LiveActivityManager(store: AppGroupPlaybackStore.shared)
+
+    private let store: PlaybackStore
 
     private var currentActivity: Activity<OneEightyActivityAttributes>?
-    private var pendingState: (bpm: Int, isPlaying: Bool)?
-    private var throttleTimer: Timer?
-    private var lastIsPlaying: Bool = false
     private var contentUpdateTask: Task<Void, Never>?
 
     private(set) var tracker: ActivityUpdateTracker
     private(set) var lastSentState: OneEightyActivityAttributes.ContentState?
-    private(set) var confirmedState: PlaybackState?
-    private(set) var reconciliationCount: Int = 0
-    private var reconciliationTimer: Timer?
-    private var stateProvider: (() -> PlaybackState)?
+    private(set) var confirmedState: PlaybackStateSnapshot?
 
-    private init() {
+    /// Latest NORMAL (bpm-only) update deferred while throttled. Coalesced into
+    /// a single push when `coalesceTimer` fires. Only the most recent value is
+    /// kept — intermediate bpm values in a burst are dropped, which is correct
+    /// for a metronome display.
+    private var pendingState: AppState?
+    private var coalesceTimer: Timer?
+
+    static func makeForTesting(store: PlaybackStore, tracker: ActivityUpdateTracker? = nil) -> LiveActivityManager {
+        let manager = LiveActivityManager(store: store)
+        if let tracker { manager.tracker = tracker }
+        return manager
+    }
+
+    private init(store: PlaybackStore) {
+        self.store = store
         tracker = ActivityUpdateTracker()
-        // Wire the intent debouncer to route through this manager
-        IntentActivityDebouncer.shared.setUpdateHandler { [weak self] bpm, isPlaying in
-            self?.updateActivity(bpm: bpm, isPlaying: isPlaying)
+    }
+
+    /// Single entry point. Correctness (no duplicate pushes across processes)
+    /// comes from the store's version claim, NOT from timing — echo suppression
+    /// is gone. Budget throttling is a real ActivityKit OS constraint, so it is
+    /// reinstated here as a coalescing gate for NORMAL (bpm-only) updates.
+    ///
+    /// - CRITICAL updates (an isPlaying transition) ALWAYS push immediately.
+    /// - NORMAL updates push immediately unless throttled/over-budget, in which
+    ///   case the latest value is coalesced and flushed by a single timer.
+    ///
+    /// The version claim happens at the moment of the ACTUAL push (see
+    /// `pushIfClaimed`), so a coalesced/newer push claims the newer version and
+    /// a superseded pending push is dropped when its (older) version is rejected.
+    func apply(_ state: AppState) {
+        // No activity yet: start it. This is effectively the first (critical) push.
+        guard currentActivity != nil else {
+            guard store.claimActivityPush(version: state.version, at: Date()) else { return }
+            startActivity(bpm: state.bpm, isPlaying: state.isPlaying)
+            tracker.recordUpdate()
+            return
         }
-        startObservingAppLifecycle()
+
+        let isCritical = state.isPlaying != lastSentState?.isPlaying
+
+        if isCritical {
+            // Play/stop transitions bypass all throttling and supersede any
+            // pending coalesced bpm update.
+            coalesceTimer?.invalidate()
+            coalesceTimer = nil
+            pendingState = nil
+            pushIfClaimed(state)
+            return
+        }
+
+        // NORMAL (bpm-only) update.
+        if tracker.shouldThrottle(priority: .normal) {
+            // Over budget / too soon: coalesce the latest value and ensure a
+            // single flush timer is scheduled at the current effective interval.
+            pendingState = state
+            if coalesceTimer == nil {
+                let interval = tracker.effectiveInterval()
+                coalesceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        self?.flushPending()
+                    }
+                }
+            }
+        } else {
+            pushIfClaimed(state)
+        }
     }
 
-    func setStateProvider(_ provider: @escaping () -> PlaybackState) {
-        stateProvider = provider
+    /// Fires when the coalescing window elapses: push the latest pending value.
+    private func flushPending() {
+        coalesceTimer = nil
+        guard let state = pendingState else { return }
+        pendingState = nil
+        pushIfClaimed(state)
     }
 
-    func push(_ state: PlaybackState) {
+    /// Claim the version at push time (cross-process dedupe), then record the
+    /// budget update and push. If the version was already claimed (e.g. a newer
+    /// critical push raced ahead of a coalesced one), this is a no-op.
+    private func pushIfClaimed(_ state: AppState) {
+        guard store.claimActivityPush(version: state.version, at: Date()) else { return }
+        tracker.recordUpdate()
+        push(PlaybackStateSnapshot(bpm: state.bpm, isPlaying: state.isPlaying))
+    }
+
+    func push(_ state: PlaybackStateSnapshot) {
         guard let activity = currentActivity else { return }
         let contentState = OneEightyActivityAttributes.ContentState(bpm: state.bpm, isPlaying: state.isPlaying)
-        tracker.recordUpdate()
+        lastSentState = contentState
         let count = tracker.totalUpdateCount
         let hourly = tracker.updatesInLastHour()
         logger.info("Pushing update #\(count) (hourly: \(hourly)) — bpm=\(state.bpm), isPlaying=\(state.isPlaying)")
@@ -64,16 +141,12 @@ final class LiveActivityManager: StateSubscriber {
         }
         contentUpdateTask?.cancel()
         contentUpdateTask = nil
-        currentActivity = nil
+        coalesceTimer?.invalidate()
+        coalesceTimer = nil
         pendingState = nil
-        throttleTimer?.invalidate()
-        throttleTimer = nil
-        lastIsPlaying = false
+        currentActivity = nil
         lastSentState = nil
         confirmedState = nil
-        reconciliationCount = 0
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = nil
         tracker.reset()
     }
 
@@ -106,7 +179,6 @@ final class LiveActivityManager: StateSubscriber {
                 attributes: attributes,
                 content: .init(state: contentState, staleDate: nil)
             )
-            lastIsPlaying = isPlaying
             logger.info("Live Activity started successfully, id=\(self.currentActivity?.id ?? "nil")")
             if let activity = currentActivity {
                 observeActivityUpdates(activity)
@@ -116,116 +188,20 @@ final class LiveActivityManager: StateSubscriber {
         }
     }
 
-    func updateActivity(bpm: Int, isPlaying: Bool) {
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = nil
-
-        let priority: UpdatePriority = (isPlaying != lastIsPlaying) ? .critical : .normal
-        let priorityLabel = priority == .critical ? "critical" : "normal"
-        logger.info("updateActivity — bpm=\(bpm), isPlaying=\(isPlaying), priority=\(priorityLabel)")
-
-        lastSentState = OneEightyActivityAttributes.ContentState(bpm: bpm, isPlaying: isPlaying)
-
-        guard currentActivity != nil else {
-            logger.warning("No current activity, falling back to startActivity")
-            startActivity(bpm: bpm, isPlaying: isPlaying)
-            if currentActivity != nil {
-                tracker.recordUpdate()
-                scheduleReconciliation()
-            }
-            return
-        }
-
-        // Critical updates (play/stop) bypass throttling entirely
-        if priority == .critical {
-            throttleTimer?.invalidate()
-            throttleTimer = nil
-            pendingState = nil
-            lastIsPlaying = isPlaying
-            pushUpdate(bpm: bpm, isPlaying: isPlaying)
-            return
-        }
-
-        // Normal updates: coalesce within minimum interval
-        pendingState = (bpm, isPlaying)
-
-        if throttleTimer == nil {
-            // First update in burst: send immediately if tracker allows
-            if !tracker.shouldThrottle(priority: .normal) {
-                pendingState = nil
-                pushUpdate(bpm: bpm, isPlaying: isPlaying)
-            }
-
-            // Start cooldown — pending updates flush when timer fires
-            throttleTimer = Timer.scheduledTimer(
-                withTimeInterval: tracker.effectiveInterval(),
-                repeats: false
-            ) { _ in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.throttleTimer = nil
-                    if let pending = self.pendingState {
-                        self.pendingState = nil
-                        self.pushUpdate(bpm: pending.bpm, isPlaying: pending.isPlaying)
-                    }
-                }
-            }
-        }
-    }
-
-    private func pushUpdate(bpm: Int, isPlaying: Bool) {
-        push(PlaybackState(bpm: bpm, isPlaying: isPlaying))
-        scheduleReconciliation()
-    }
-
     private func observeActivityUpdates(_ activity: Activity<OneEightyActivityAttributes>) {
         contentUpdateTask?.cancel()
         contentUpdateTask = Task { @MainActor in
             for await content in activity.contentUpdates {
                 let delivered = content.state
                 logger.info("contentUpdates delivered — bpm=\(delivered.bpm), isPlaying=\(delivered.isPlaying)")
-                confirmedState = PlaybackState(bpm: delivered.bpm, isPlaying: delivered.isPlaying)
+                confirmedState = PlaybackStateSnapshot(bpm: delivered.bpm, isPlaying: delivered.isPlaying)
             }
-        }
-    }
-
-    private func scheduleReconciliation() {
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-            Task { @MainActor [weak self] in
-                guard let self, self.currentActivity != nil else { return }
-                self.reconciliationTimer = nil
-                self.reconciliationCount += 1
-                if let provider = self.stateProvider {
-                    self.reconcile(currentState: provider())
-                }
-            }
-        }
-    }
-
-    private func startObservingAppLifecycle() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-    }
-
-    @objc private func appDidBecomeActive() {
-        Task { @MainActor in
-            guard currentActivity != nil, let provider = stateProvider else { return }
-            reconciliationCount += 1
-            reconcile(currentState: provider())
         }
     }
 
     func endActivity() {
         guard let activity = currentActivity else { return }
         logger.info("endActivity called — id=\(activity.id)")
-
-        reconciliationTimer?.invalidate()
-        reconciliationTimer = nil
 
         // Clear synchronously BEFORE the async end to prevent race:
         // startActivity() calls endActivity() then immediately creates a new activity.
