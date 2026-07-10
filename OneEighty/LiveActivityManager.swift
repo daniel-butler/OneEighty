@@ -141,7 +141,8 @@ final class LiveActivityManager {
     /// critical push raced ahead of a coalesced one), this is a no-op.
     private func pushIfClaimed(_ state: AppState, reason: String) {
         guard store.claimActivityPush(version: state.version, at: Date()) else {
-            logger.info("pushIfClaimed(\(reason)): version \(state.version) already claimed — skipping (bpm=\(state.bpm), isPlaying=\(state.isPlaying))")
+            let onScreen = Activity<OneEightyActivityAttributes>.activities.first?.content.state
+            logger.info("pushIfClaimed(\(reason)): version \(state.version) already claimed — skipping (bpm=\(state.bpm), isPlaying=\(state.isPlaying)) — actual on-screen content: bpm=\(onScreen?.bpm ?? -1), isPlaying=\(onScreen?.isPlaying ?? false)")
             return
         }
         tracker.recordUpdate()

@@ -57,12 +57,18 @@ struct IncrementBPMIntent: AppIntent {
     static var title: LocalizedStringResource = "Increment SPM"
     static var description = IntentDescription("Increases SPM by 1")
 
+    // Runs in the widget extension process when triggered from the Dynamic
+    // Island/Lock Screen. ActivityKit's Activity<T> API (request, and even
+    // enumerating .activities) is gated on the CALLING process's own
+    // NSSupportsLiveActivities entitlement — the extension doesn't have one
+    // and can't get one, so it must never touch LiveActivityManager. Mutating
+    // the store is enough: the main app picks up the change via the Darwin
+    // notification wake path and pushes the Live Activity update itself.
     @MainActor
     func perform() async throws -> some IntentResult {
         logger.info("IncrementBPMIntent — mutating store absolutely")
         let store = AppGroupPlaybackStore.shared
         store.mutate { $0.bpm += 1 }
-        LiveActivityManager.shared.apply(store.state)   // post-mutation actual value
         return .result()
     }
 }
@@ -76,7 +82,6 @@ struct DecrementBPMIntent: AppIntent {
         logger.info("DecrementBPMIntent — mutating store absolutely")
         let store = AppGroupPlaybackStore.shared
         store.mutate { $0.bpm -= 1 }
-        LiveActivityManager.shared.apply(store.state)
         return .result()
     }
 }
