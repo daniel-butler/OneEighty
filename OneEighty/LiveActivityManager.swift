@@ -64,15 +64,24 @@ final class LiveActivityManager {
     /// `pushIfClaimed`), so a coalesced/newer push claims the newer version and
     /// a superseded pending push is dropped when its (older) version is rejected.
     func apply(_ state: AppState) {
-        // No local activity handle: before assuming none exists anywhere and
-        // racing to create one, check whether the system already has one —
-        // e.g. this is the widget extension process, whose own LiveActivityManager
-        // instance never called startActivity() itself but shares the same
-        // cross-process store as the process that did. Blindly starting a new
-        // activity here would tear down and replace the real, on-screen one
-        // via cleanupStaleActivities(), and would burn a version claim without
-        // ever reaching the activity actually visible to the user.
+        // No local activity handle. What we do next depends on whether playback
+        // is on, and this is the invariant that makes "app terminated → Live
+        // Activity closed" reliable across EVERY entry path (cold UI launch, a
+        // background relaunch by an AudioPlaybackIntent, a stop from anywhere):
         if currentActivity == nil {
+            // Stopped with nothing local: any activity still registered with the
+            // system is an orphan from a terminated session (iOS delivers no
+            // reliable callback when a suspended app is killed) or a just-stopped
+            // intent in a fresh process. End it and stay dark — never adopt or
+            // start one for a stopped state. Returning immediately also defeats
+            // the async-end race: we never touch the not-yet-ended orphan again.
+            guard state.isPlaying else {
+                cleanupStaleActivities()
+                return
+            }
+            // Playing with no local handle: reuse the system's activity if one
+            // exists (a fresh process relaunched by an intent) rather than
+            // stacking a second one on top of the real, on-screen activity.
             adoptExistingActivityIfPresent()
         }
 
@@ -179,6 +188,31 @@ final class LiveActivityManager {
         lastSentState = nil
         confirmedState = nil
         tracker.reset()
+    }
+
+    /// Synchronously end every registered Live Activity, blocking the caller up
+    /// to `timeout` for the async end requests to actually dispatch. The app
+    /// termination path (`AppDelegate.applicationWillTerminate`) has ~5s before
+    /// the process is killed; a fire-and-forget `Task` may never run before
+    /// SIGKILL, so we wait here to make "closed while running → Live Activity
+    /// ended" reliable rather than best-effort. Detached tasks run off the main
+    /// actor so blocking the (main-thread) caller cannot deadlock them.
+    func endAllActivitiesBlocking(timeout: TimeInterval) {
+        let activities = Activity<OneEightyActivityAttributes>.activities
+        currentActivity = nil
+        contentUpdateTask?.cancel()
+        contentUpdateTask = nil
+        guard !activities.isEmpty else { return }
+
+        let group = DispatchGroup()
+        for activity in activities {
+            group.enter()
+            Task.detached {
+                await activity.end(nil, dismissalPolicy: .immediate)
+                group.leave()
+            }
+        }
+        _ = group.wait(timeout: .now() + timeout)
     }
 
     func cleanupStaleActivities() {

@@ -176,6 +176,63 @@ final class LiveActivityManagerTests: XCTestCase {
                        "CRITICAL isPlaying transition must bypass throttle and push immediately")
     }
 
+    // MARK: - "app terminated → Live Activity closed"
+
+    /// iOS delivers no reliable callback when a suspended app is killed, so a
+    /// Live Activity from a terminated session stays registered with the system.
+    /// When a fresh process (cold launch, or a background relaunch by an intent)
+    /// applies a STOPPED state with no local activity handle, it must END that
+    /// orphan rather than adopting/refreshing it — leaving no stale Dynamic
+    /// Island on screen.
+    func testStoppedApplyWithNoLocalHandleEndsOrphanInsteadOfAdoptingIt() async throws {
+        // A previous session started an activity and was terminated without
+        // ending it — the system still has it registered.
+        let previous = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
+        previous.startActivity(bpm: 190, isPlaying: true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 1,
+                       "precondition: orphaned activity should be registered with the system")
+
+        // Fresh process: a new manager with no local currentActivity applies a
+        // stopped state (cold launch, or a Stop intent that woke the app).
+        let fresh = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
+        fresh.apply(AppState(version: 1, bpm: 180, isPlaying: false))
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 0,
+                       "a stopped apply with no local handle must end the orphan, not keep it on screen")
+    }
+
+    /// Ending the orphan on a stopped apply must not permanently block the
+    /// activity: once playback actually begins, it is created.
+    func testStoppedApplyThenPlayStillStartsActivity() async throws {
+        let manager = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
+        manager.apply(AppState(version: 1, bpm: 180, isPlaying: false))   // stays dark
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 0,
+                       "no activity should exist while stopped with no local handle")
+
+        manager.apply(AppState(version: 2, bpm: 180, isPlaying: true))    // user presses play
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 1,
+                       "starting playback must create the activity")
+    }
+
+    /// The termination path must actually end the activity before returning,
+    /// not fire a Task that may never run before the process is killed.
+    func testEndAllActivitiesBlockingEndsBeforeReturning() async throws {
+        let manager = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
+        manager.startActivity(bpm: 180, isPlaying: true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 1,
+                       "precondition: an activity is on screen")
+
+        manager.endAllActivitiesBlocking(timeout: 3)
+
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 0,
+                       "endAllActivitiesBlocking must end the activity before returning")
+    }
+
     func testResetClearsLastSentState() {
         let manager = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
         manager.startActivity(bpm: 180, isPlaying: true)
