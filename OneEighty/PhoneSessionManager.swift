@@ -12,7 +12,7 @@ import UIKit
 import WatchConnectivity
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "PhoneSession")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "PhoneSession")
 
 @MainActor
 final class PhoneSessionManager: NSObject, StateSubscriber {

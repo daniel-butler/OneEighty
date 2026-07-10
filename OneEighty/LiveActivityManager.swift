@@ -9,7 +9,7 @@ import ActivityKit
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "LiveActivity")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "LiveActivity")
 
 /// Local content snapshot for pushing a Live Activity update. Distinct from
 /// the transitional `PlaybackState` (OneEightyEngine.swift) — this manager is

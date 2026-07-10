@@ -9,7 +9,7 @@ import SwiftUI
 import ActivityKit
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "AppLifecycle")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "AppLifecycle")
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationWillTerminate(_ application: UIApplication) {
@@ -38,14 +38,14 @@ struct OneEightyApp: App {
         // OneEightyEngine() touches AppGroupPlaybackStore.shared, which seeds its
         // in-memory projection from disk (state.json) on first access.
         if ProcessInfo.processInfo.arguments.contains("--reset-state") {
-            if let defaults = UserDefaults(suiteName: "group.com.danielbutler.OneEighty") {
+            if let defaults = UserDefaults(suiteName: "group.app.rekuro.OneEighty") {
                 defaults.removeObject(forKey: "bpm")
                 defaults.removeObject(forKey: "isPlaying")
                 defaults.removeObject(forKey: "volume")
             }
             // Delete the versioned store's backing file so it seeds from defaults.
             if let container = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: "group.com.danielbutler.OneEighty") {
+                .containerURL(forSecurityApplicationGroupIdentifier: "group.app.rekuro.OneEighty") {
                 try? FileManager.default.removeItem(at: container.appendingPathComponent("state.json"))
             }
         }

@@ -8,7 +8,7 @@
 import AVFoundation
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "TickScheduler")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "TickScheduler")
 
 /// Schedules tick buffer playback using AVAudioTime for sample-accurate timing.
 /// The caller owns the AVAudioEngine and AVAudioPlayerNode; this class only
