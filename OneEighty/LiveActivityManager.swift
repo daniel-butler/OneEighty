@@ -66,7 +66,10 @@ final class LiveActivityManager {
     func apply(_ state: AppState) {
         // No activity yet: start it. This is effectively the first (critical) push.
         guard currentActivity != nil else {
-            guard store.claimActivityPush(version: state.version, at: Date()) else { return }
+            guard store.claimActivityPush(version: state.version, at: Date()) else {
+                logger.info("apply: version \(state.version) already claimed — skipping initial start")
+                return
+            }
             startActivity(bpm: state.bpm, isPlaying: state.isPlaying)
             tracker.recordUpdate()
             return
@@ -80,7 +83,7 @@ final class LiveActivityManager {
             coalesceTimer?.invalidate()
             coalesceTimer = nil
             pendingState = nil
-            pushIfClaimed(state)
+            pushIfClaimed(state, reason: "critical")
             return
         }
 
@@ -98,7 +101,7 @@ final class LiveActivityManager {
                 }
             }
         } else {
-            pushIfClaimed(state)
+            pushIfClaimed(state, reason: "immediate")
         }
     }
 
@@ -107,25 +110,29 @@ final class LiveActivityManager {
         coalesceTimer = nil
         guard let state = pendingState else { return }
         pendingState = nil
-        pushIfClaimed(state)
+        pushIfClaimed(state, reason: "coalesced")
     }
 
     /// Claim the version at push time (cross-process dedupe), then record the
     /// budget update and push. If the version was already claimed (e.g. a newer
     /// critical push raced ahead of a coalesced one), this is a no-op.
-    private func pushIfClaimed(_ state: AppState) {
-        guard store.claimActivityPush(version: state.version, at: Date()) else { return }
+    private func pushIfClaimed(_ state: AppState, reason: String) {
+        guard store.claimActivityPush(version: state.version, at: Date()) else {
+            logger.info("pushIfClaimed(\(reason)): version \(state.version) already claimed — skipping (bpm=\(state.bpm), isPlaying=\(state.isPlaying))")
+            return
+        }
         tracker.recordUpdate()
-        push(PlaybackStateSnapshot(bpm: state.bpm, isPlaying: state.isPlaying))
+        push(PlaybackStateSnapshot(bpm: state.bpm, isPlaying: state.isPlaying), reason: reason)
     }
 
-    func push(_ state: PlaybackStateSnapshot) {
+    func push(_ state: PlaybackStateSnapshot, reason: String = "manual") {
         guard let activity = currentActivity else { return }
         let contentState = OneEightyActivityAttributes.ContentState(bpm: state.bpm, isPlaying: state.isPlaying)
         lastSentState = contentState
         let count = tracker.totalUpdateCount
         let hourly = tracker.updatesInLastHour()
-        logger.info("Pushing update #\(count) (hourly: \(hourly)) — bpm=\(state.bpm), isPlaying=\(state.isPlaying)")
+        let systemActivityCount = Activity<OneEightyActivityAttributes>.activities.count
+        logger.info("Pushing update #\(count) (hourly: \(hourly), reason: \(reason), system activities: \(systemActivityCount)) — bpm=\(state.bpm), isPlaying=\(state.isPlaying)")
         Task {
             await activity.update(.init(state: contentState, staleDate: nil))
             logger.info("Activity updated — id=\(activity.id)")
