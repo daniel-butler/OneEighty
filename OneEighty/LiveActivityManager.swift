@@ -64,7 +64,18 @@ final class LiveActivityManager {
     /// `pushIfClaimed`), so a coalesced/newer push claims the newer version and
     /// a superseded pending push is dropped when its (older) version is rejected.
     func apply(_ state: AppState) {
-        // No activity yet: start it. This is effectively the first (critical) push.
+        // No local activity handle: before assuming none exists anywhere and
+        // racing to create one, check whether the system already has one —
+        // e.g. this is the widget extension process, whose own LiveActivityManager
+        // instance never called startActivity() itself but shares the same
+        // cross-process store as the process that did. Blindly starting a new
+        // activity here would tear down and replace the real, on-screen one
+        // via cleanupStaleActivities(), and would burn a version claim without
+        // ever reaching the activity actually visible to the user.
+        if currentActivity == nil {
+            adoptExistingActivityIfPresent()
+        }
+
         guard currentActivity != nil else {
             guard store.claimActivityPush(version: state.version, at: Date()) else {
                 logger.info("apply: version \(state.version) already claimed — skipping initial start")
@@ -103,6 +114,18 @@ final class LiveActivityManager {
         } else {
             pushIfClaimed(state, reason: "immediate")
         }
+    }
+
+    /// Adopt an existing system-registered activity into this instance, if one
+    /// exists. Lets a process with no local currentActivity (the widget
+    /// extension) push directly to the real, already-visible activity instead
+    /// of starting a competing new one.
+    private func adoptExistingActivityIfPresent() {
+        guard let existing = Activity<OneEightyActivityAttributes>.activities.first else { return }
+        currentActivity = existing
+        lastSentState = existing.content.state
+        observeActivityUpdates(existing)
+        logger.info("Adopted existing activity — id=\(existing.id)")
     }
 
     /// Fires when the coalescing window elapses: push the latest pending value.
@@ -192,6 +215,7 @@ final class LiveActivityManager {
                 attributes: attributes,
                 content: .init(state: contentState, staleDate: nil)
             )
+            lastSentState = contentState
             logger.info("Live Activity started successfully, id=\(self.currentActivity?.id ?? "nil")")
             if let activity = currentActivity {
                 observeActivityUpdates(activity)

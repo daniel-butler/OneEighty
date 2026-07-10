@@ -63,6 +63,7 @@ final class AppGroupPlaybackStore: PlaybackStore {
         transform(&optimistic)
         optimistic.version = subject.value.version + 1
         optimistic.clampInvariants()
+        logger.info("publish optimistic v\(optimistic.version) bpm=\(optimistic.bpm) isPlaying=\(optimistic.isPlaying)")
         subject.send(optimistic)
 
         // 2. Authoritative coordinated write off the main actor.
@@ -94,8 +95,12 @@ final class AppGroupPlaybackStore: PlaybackStore {
 
     /// Update the projection to an authoritative value if it is newer.
     private func adoptAuthoritative(_ authoritative: AppState) {
-        if authoritative.version >= subject.value.version, authoritative != subject.value {
+        let projectionVersion = subject.value.version
+        if authoritative.version >= projectionVersion, authoritative != subject.value {
+            logger.info("publish authoritative v\(authoritative.version) bpm=\(authoritative.bpm) isPlaying=\(authoritative.isPlaying) (projection was v\(projectionVersion))")
             subject.send(authoritative)
+        } else {
+            logger.info("authoritative v\(authoritative.version) dropped — not newer than projection v\(projectionVersion)")
         }
     }
 

@@ -100,6 +100,47 @@ final class LiveActivityManagerTests: XCTestCase {
                        "starting a new session must end orphaned activities from a previous session, not stack a second one")
     }
 
+    /// Reproduces the widget-extension bug: IncrementBPMIntent/DecrementBPMIntent
+    /// run in the extension process, which has its own LiveActivityManager.shared
+    /// singleton with currentActivity == nil (it never called startActivity itself),
+    /// but shares the SAME cross-process store/claim ledger as the main app.
+    /// Before the fix, apply() with currentActivity == nil always tried to START a
+    /// new activity, competing for the same monotonic version claim the main app's
+    /// activity relies on — so the extension's push went nowhere (no real activity
+    /// handle) while burning a version the main app could otherwise have pushed.
+    func testApplyAdoptsExistingActivityInsteadOfRacingToStartANewOne() async throws {
+        let store = InMemoryPlaybackStore()
+        let mainApp = LiveActivityManager.makeForTesting(store: store)
+        mainApp.startActivity(bpm: 180, isPlaying: true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 1)
+        let originalID = Activity<OneEightyActivityAttributes>.activities.first?.id
+
+        // A second manager instance sharing the same store, with no local
+        // currentActivity — exactly the widget extension's situation.
+        let extensionSide = LiveActivityManager.makeForTesting(store: store)
+        extensionSide.apply(AppState(version: UInt64(mainApp.tracker.totalUpdateCount) + 1, bpm: 190, isPlaying: true))
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 1,
+                       "must adopt the existing activity rather than starting a competing second one")
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.first?.id, originalID,
+                       "the real, already-visible activity must not be torn down and replaced")
+        XCTAssertEqual(extensionSide.tracker.totalUpdateCount, 1,
+                       "adopting and pushing to the existing activity should count as a real update")
+    }
+
+    /// After the very first startActivity(), lastSentState must reflect the
+    /// activity's initial content — otherwise the next update's isPlaying
+    /// comparison is against nil, is always treated as a critical transition,
+    /// bypassing coalescing/throttling unintentionally.
+    func testStartActivitySetsLastSentStateToInitialContent() {
+        let manager = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
+        manager.startActivity(bpm: 180, isPlaying: true)
+        XCTAssertEqual(manager.lastSentState?.bpm, 180)
+        XCTAssertEqual(manager.lastSentState?.isPlaying, true)
+    }
+
     // MARK: - Budget throttling / coalescing (FIX 1)
 
     func testNormalBurstOverBudgetCoalesces() {
