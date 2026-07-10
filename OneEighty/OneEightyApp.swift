@@ -14,18 +14,14 @@ private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "
 class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationWillTerminate(_ application: UIApplication) {
         logger.info("applicationWillTerminate — cleaning up")
-        let activities = Activity<OneEightyActivityAttributes>.activities
-        if !activities.isEmpty {
-            let semaphore = DispatchSemaphore(value: 0)
-            // Must use .detached — a regular Task inherits the main actor
-            // context, deadlocking with the semaphore blocking the main thread.
+        // Best-effort only: iOS does not guarantee this async work completes
+        // before the process dies (and a SIGKILL skips this method entirely).
+        // The real safety net is LiveActivityManager.startActivity() ending
+        // any orphaned activities it finds on the next launch.
+        for activity in Activity<OneEightyActivityAttributes>.activities {
             Task.detached {
-                for activity in activities {
-                    await activity.end(nil, dismissalPolicy: .immediate)
-                }
-                semaphore.signal()
+                await activity.end(nil, dismissalPolicy: .immediate)
             }
-            semaphore.wait(timeout: .now() + 2)
         }
         AudioSessionManager.shared.deactivate()
     }

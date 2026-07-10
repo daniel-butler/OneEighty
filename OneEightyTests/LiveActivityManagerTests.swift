@@ -79,6 +79,27 @@ final class LiveActivityManagerTests: XCTestCase {
         manager.cleanupStaleActivities()
     }
 
+    func testStartActivityEndsOrphanedActivityFromPreviousSession() async throws {
+        // Simulate a previous app session that started a Live Activity and was
+        // killed (e.g. SIGKILL / Xcode stop) before it could end the activity.
+        // Nothing local references it anymore, but ActivityKit still has it
+        // registered.
+        let orphan = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
+        orphan.startActivity(bpm: 180, isPlaying: true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 1,
+                       "precondition: orphaned activity should be registered with the system")
+
+        // A brand-new process launch: a fresh manager instance with no
+        // knowledge of the orphaned activity starts its own.
+        let fresh = LiveActivityManager.makeForTesting(store: InMemoryPlaybackStore())
+        fresh.startActivity(bpm: 190, isPlaying: true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(Activity<OneEightyActivityAttributes>.activities.count, 1,
+                       "starting a new session must end orphaned activities from a previous session, not stack a second one")
+    }
+
     // MARK: - Budget throttling / coalescing (FIX 1)
 
     func testNormalBurstOverBudgetCoalesces() {

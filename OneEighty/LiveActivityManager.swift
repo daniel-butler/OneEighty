@@ -167,6 +167,12 @@ final class LiveActivityManager {
     func startActivity(bpm: Int, isPlaying: Bool) {
         logger.info("startActivity called — bpm=\(bpm), isPlaying=\(isPlaying)")
         endActivity()
+        // A previous session may have been killed before it could end its
+        // activity (e.g. SIGKILL). Without this, that orphaned activity
+        // stays registered with the system while this session pushes
+        // updates to a second, new one — the orphan is what stays on
+        // screen, silently frozen.
+        cleanupStaleActivities()
 
         let attributes = OneEightyActivityAttributes()
         let contentState = OneEightyActivityAttributes.ContentState(
