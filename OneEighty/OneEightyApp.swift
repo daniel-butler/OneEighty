@@ -14,15 +14,13 @@ private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "
 class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationWillTerminate(_ application: UIApplication) {
         logger.info("applicationWillTerminate — cleaning up")
-        // Best-effort only: iOS does not guarantee this async work completes
-        // before the process dies (and a SIGKILL skips this method entirely).
-        // The real safety net is LiveActivityManager.startActivity() ending
-        // any orphaned activities it finds on the next launch.
-        for activity in Activity<OneEightyActivityAttributes>.activities {
-            Task.detached {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
+        // Block (bounded) so the end requests actually dispatch before the
+        // process dies, instead of firing a Task that may never run. This is
+        // called only when the app is still executing at termination (a SIGKILL
+        // of a suspended app skips it entirely); the safety net for that case is
+        // apply()'s invariant, which ends orphaned activities on the next launch
+        // or store update.
+        LiveActivityManager.shared.endAllActivitiesBlocking(timeout: 3)
         AudioSessionManager.shared.deactivate()
     }
 }
