@@ -150,16 +150,19 @@ struct ContentView: View {
 /// Small popover explaining the SPM label.
 private struct SPMInfoBubble: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Steps per minute")
-                .font(.subheadline.weight(.semibold))
+                .font(.headline)
             Text("Your running cadence: how often your feet hit the ground. Around 180 is a common target.")
-                .font(.footnote)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .frame(maxWidth: 240)
+        // Fixed width + intrinsic height so the popover sizes to the full text
+        // instead of clipping the last line.
+        .frame(width: 280, alignment: .leading)
+        .padding(18)
+        .fixedSize()
     }
 }
 
