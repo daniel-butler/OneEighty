@@ -15,6 +15,7 @@ struct ContentView: View {
     var engine: OneEightyEngine
     @State private var showBPMAlert: Bool = false
     @State private var bpmText: String = ""
+    @State private var showSPMInfo: Bool = false
 
     var body: some View {
         VStack(spacing: 40) {
@@ -39,10 +40,24 @@ struct ContentView: View {
                         bpmText = "\(engine.bpm)"
                         showBPMAlert = true
                     }
-                Text("SPM")
-                    .font(.system(.subheadline, design: .default, weight: .semibold))
-                    .tracking(3)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("SPM")
+                        .font(.system(.subheadline, design: .default, weight: .semibold))
+                        .tracking(3)
+                    Button {
+                        showSPMInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.footnote)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("What does SPM mean?")
+                    .popover(isPresented: $showSPMInfo) {
+                        SPMInfoBubble()
+                            .presentationCompactAdaptation(.popover)
+                    }
+                }
+                .foregroundStyle(.secondary)
             }
             .alert("Set SPM", isPresented: $showBPMAlert) {
                 TextField("150–230", text: $bpmText)
@@ -129,6 +144,22 @@ struct ContentView: View {
     private func commitBPM() {
         guard let typed = Int(bpmText) else { return }
         engine.setBPM(typed)
+    }
+}
+
+/// Small popover explaining the SPM label.
+private struct SPMInfoBubble: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Steps per minute")
+                .font(.subheadline.weight(.semibold))
+            Text("Your running cadence: how often your feet hit the ground. Around 180 is a common target.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: 240)
     }
 }
 
