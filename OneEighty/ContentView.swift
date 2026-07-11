@@ -25,16 +25,23 @@ struct ContentView: View {
             Spacer()
 
             // BPM Display
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
                 Text("\(engine.bpm)")
-                    .font(.system(size: 80, weight: .bold))
+                    .font(.system(size: 116, weight: .black))
+                    .foregroundStyle(OE.ascent)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: engine.bpm)
                     .accessibilityIdentifier("bpmDisplay")
                     .onTapGesture {
                         bpmText = "\(engine.bpm)"
                         showBPMAlert = true
                     }
                 Text("SPM")
-                    .font(.title3)
+                    .font(.system(.subheadline, design: .default, weight: .semibold))
+                    .tracking(3)
                     .foregroundStyle(.secondary)
             }
             .alert("Set SPM", isPresented: $showBPMAlert) {
@@ -50,11 +57,12 @@ struct ContentView: View {
                     engine.decrementBPM()
                 } label: {
                     Image(systemName: "minus")
-                        .font(.title)
+                        .font(.title.weight(.semibold))
+                        .foregroundStyle(OE.accent)
                         .frame(width: 60, height: 60)
                         .background(
                             Circle()
-                                .stroke(lineWidth: 2)
+                                .stroke(OE.accent, lineWidth: 2)
                         )
                 }
                 .disabled(!engine.canDecrementBPM)
@@ -64,11 +72,12 @@ struct ContentView: View {
                     engine.incrementBPM()
                 } label: {
                     Image(systemName: "plus")
-                        .font(.title)
+                        .font(.title.weight(.semibold))
+                        .foregroundStyle(OE.accent)
                         .frame(width: 60, height: 60)
                         .background(
                             Circle()
-                                .stroke(lineWidth: 2)
+                                .stroke(OE.accent, lineWidth: 2)
                         )
                 }
                 .disabled(!engine.canIncrementBPM)
@@ -95,17 +104,22 @@ struct ContentView: View {
             } label: {
                 Text(engine.isPlaying ? "STOP" : "START")
                     .font(.title2)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
+                    .tracking(1)
                     .frame(maxWidth: .infinity)
                     .frame(height: 60)
-                    .background(engine.isPlaying ? Color.red : Color.blue)
+                    .background {
+                        if engine.isPlaying { OE.stop }
+                        else { OE.ascent }
+                    }
                     .foregroundStyle(.white)
-                    .cornerRadius(12)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .accessibilityIdentifier("togglePlayback")
             .padding(.horizontal, 40)
             .padding(.bottom, 40)
         }
+        .tint(OE.accent)
         .onAppear {
             logger.info("onAppear — hydrating engine for UI launch")
             engine.hydrateForUILaunch()
