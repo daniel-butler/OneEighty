@@ -9,7 +9,7 @@ import AppIntents
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "Intents")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "Intents")
 
 struct ToggleOneEightyIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Toggle OneEighty"

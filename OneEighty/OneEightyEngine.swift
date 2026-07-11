@@ -16,7 +16,7 @@ import Observation
 import UIKit
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "OneEightyEngine")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "OneEightyEngine")
 
 /// Transitional type — still consumed by PhoneSessionManager and StateSubscriber
 /// (watch-sync reconciliation). LiveActivityManager has fully migrated off it onto

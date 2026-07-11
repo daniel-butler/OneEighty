@@ -5,7 +5,7 @@
 - **OneEightyWatch Watch App/** — watchOS companion
 - **OneEightyWidget/** — WidgetKit live activity
 - BPM range: 150–230 SPM
-- Bundle ID: com.danielbutler.OneEighty
+- Bundle ID: app.rekuro.OneEighty
 
 ## Build & Test
 ```bash
@@ -27,7 +27,7 @@ The iPhone 17 Pro simulator (iOS 26) requires device family 4 in the app's Info.
 APP_PATH=./build/Build/Products/Debug-iphonesimulator/OneEighty.app
 /usr/libexec/PlistBuddy -c "Add UIDeviceFamily: integer 4" "$APP_PATH/Info.plist"
 xcrun simctl install booted "$APP_PATH"
-xcrun simctl launch booted com.danielbutler.OneEighty
+xcrun simctl launch booted app.rekuro.OneEighty
 ```
 
 Note: `xcodebuild test` bypasses this issue (it installs via a different mechanism).

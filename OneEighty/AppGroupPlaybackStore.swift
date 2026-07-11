@@ -3,10 +3,10 @@ import Combine
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "PlaybackStore")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "PlaybackStore")
 
 private enum DarwinName {
-    static let changed = "com.danielbutler.OneEighty.state.changed"
+    static let changed = "app.rekuro.OneEighty.state.changed"
 }
 
 @MainActor
@@ -19,7 +19,7 @@ final class AppGroupPlaybackStore: PlaybackStore {
 
     private nonisolated let fileURL: URL
     private nonisolated let defaults: UserDefaults
-    private nonisolated let ioQueue = DispatchQueue(label: "com.danielbutler.OneEighty.store.io")
+    private nonisolated let ioQueue = DispatchQueue(label: "app.rekuro.OneEighty.store.io")
 
     /// Dedicated synchronization for the Live Activity claim/budget state ONLY.
     /// Deliberately NOT `ioQueue`: the claim methods are called from `@MainActor`
@@ -41,10 +41,10 @@ final class AppGroupPlaybackStore: PlaybackStore {
 
     convenience init() {
         let container = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: "group.com.danielbutler.OneEighty")
+            .containerURL(forSecurityApplicationGroupIdentifier: "group.app.rekuro.OneEighty")
         let url = (container ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("state.json")
-        let defaults = UserDefaults(suiteName: "group.com.danielbutler.OneEighty") ?? .standard
+        let defaults = UserDefaults(suiteName: "group.app.rekuro.OneEighty") ?? .standard
         self.init(fileURL: url, defaults: defaults)
     }
 

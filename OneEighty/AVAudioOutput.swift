@@ -2,7 +2,7 @@
 import AVFoundation
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "AudioOutput")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "AudioOutput")
 
 @MainActor
 final class AVAudioOutput: AudioOutput {

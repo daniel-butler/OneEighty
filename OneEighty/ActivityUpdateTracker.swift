@@ -13,7 +13,7 @@ final class ActivityUpdateTracker {
     private(set) var updateTimestamps: [Date] = []
     /// Monotonic count of all updates recorded (not affected by window pruning).
     private(set) var totalUpdateCount: Int = 0
-    private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "UpdateTracker")
+    private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "UpdateTracker")
 
     init(minimumInterval: TimeInterval = 0.3, budgetWarningThreshold: Int = 40) {
         self.minimumInterval = minimumInterval

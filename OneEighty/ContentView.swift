@@ -8,7 +8,7 @@
 import SwiftUI
 import os
 
-private let logger = Logger(subsystem: "com.danielbutler.OneEighty", category: "ContentView")
+private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "ContentView")
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
