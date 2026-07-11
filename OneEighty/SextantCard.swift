@@ -2,27 +2,33 @@
 //  SextantCard.swift
 //  OneEighty
 //
-//  A quiet, persistent awareness card pointing to Sextant Run (sextant.run),
-//  the run-analysis companion. Cross-promo: people using a running-cadence
-//  metronome are structured runners, which is Sextant's beachhead audience.
+//  A quiet, persistent awareness card pointing to Sextant (sextant.run), the
+//  run-analysis companion. Cross-promo: people using a running-cadence metronome
+//  are structured runners, which is Sextant's beachhead audience.
 //
-//  The card is styled as a self-contained dark "billboard" using Sextant's own
-//  brand tokens and logomark, so it presents Sextant's real identity inside the
-//  host app. Token values and the mark geometry are vendored (scoped, minimal)
-//  from the brand source of truth: running-app-backend `logos/` (BRAND.md,
-//  SextantTokens.swift, logomark-small.svg). Keep them in sync if the brand moves.
+//  Styled as a self-contained dark, raised "billboard" using Sextant's own brand
+//  tokens and logomark. Content (copy + link) is remotely controllable via a
+//  static JSON on the CDN so the card can change when Sextant goes live, without
+//  an app update. It ships with the current card as the bundled default and
+//  falls back to it (or the last cached copy) whenever the fetch is unavailable,
+//  so it never blocks the UI or breaks offline.
+//
+//  Token values and mark geometry are vendored (scoped, minimal) from the brand
+//  source of truth: running-app-backend `logos/`. Keep them in sync if the brand
+//  moves.
 //
 
 import SwiftUI
+import Combine
 import CoreText
 import os
 
 private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "SextantCard")
 
 // MARK: - Brand fonts (bundled, registered at runtime)
-// IBM Plex Mono (wordmark / engraved labels) + Hanken Grotesk (UI text), both
-// SIL OFL. Registered process-wide on first use so no Info.plist entry is
-// needed. Font.custom falls back to the system font if registration ever fails.
+// IBM Plex Mono (engraved overline) + Hanken Grotesk (UI text), both SIL OFL.
+// Registered process-wide on first use; Font.custom falls back to the system
+// font if registration ever fails.
 
 private let sextantFontsRegistered: Bool = {
     for name in ["IBMPlexMono-Medium", "HankenGrotesk-Regular", "HankenGrotesk-SemiBold"] {
@@ -39,16 +45,14 @@ private let sextantFontsRegistered: Bool = {
 }()
 
 private enum SextantFont {
-    // Custom fonts anchored to the iOS text-style ramp (relativeTo:) so they
-    // scale with Dynamic Type instead of being frozen at a point size.
     static var overline: Font { .custom("IBMPlexMono-Medium", size: 11, relativeTo: .caption2) }
     static var title: Font { .custom("HankenGrotesk-SemiBold", size: 17, relativeTo: .headline) }
     static var lede: Font { .custom("HankenGrotesk-Regular", size: 14, relativeTo: .subheadline) }
 }
 
-// MARK: - Brand tokens (scoped, vendored from logos/SextantTokens.swift)
-// Sextant leads dark; these are the dark-theme values so the card always shows
-// Sextant's signature night identity regardless of the host app's appearance.
+// MARK: - Brand tokens (scoped, vendored). Fixed dark: Sextant leads dark, and a
+// raised surface + bevel + shadow keep the card separated from the host in both
+// light and dark.
 
 private extension Color {
     init(sxHex hex: UInt32) {
@@ -60,61 +64,102 @@ private extension Color {
             opacity: 1
         )
     }
-
-    /// Theme-adaptive color, resolved per trait at render time (mirrors the
-    /// dark/light token pairs in the brand's SextantTokens.swift).
-    static func sxDynamic(dark: UInt32, light: UInt32) -> Color {
-        Color(uiColor: UIColor { trait in
-            trait.userInterfaceStyle == .light
-                ? UIColor(Color(sxHex: light))
-                : UIColor(Color(sxHex: dark))
-        })
-    }
 }
 
-// Card follows the host theme: Sextant's ink night identity on a dark host,
-// its warm parchment "day" counterpart on a light host. A raised surface,
-// border, and soft shadow keep it separated from the host background either way.
 private enum Sextant {
-    static let cardTop    = Color.sxDynamic(dark: 0x172A35, light: 0xFFFFFF) // raised
-    static let cardBottom = Color.sxDynamic(dark: 0x0F1B26, light: 0xFBF7EE)
-    static let border     = Color.sxDynamic(dark: 0x27414F, light: 0xE4DCC9)
-    static let text       = Color.sxDynamic(dark: 0xF1ECE0, light: 0x0A131C) // bone / ink
-    static let textMuted  = Color.sxDynamic(dark: 0x9AA7B4, light: 0x4B5A66)
-    static let gold       = Color.sxDynamic(dark: 0xEBB85E, light: 0xB07F2C) // accent — earned moments only
-    static let shadow     = Color.sxDynamic(dark: 0x000000, light: 0x1A2530)
+    static let cardTop      = Color(sxHex: 0x172A35) // raised surface, lighter at top
+    static let cardBottom   = Color(sxHex: 0x0F1B26)
+    static let bevelTop     = Color(sxHex: 0x33505F) // catch-light on the raised edge
+    static let border       = Color(sxHex: 0x213947) // darker bottom edge of the bevel
+    static let text         = Color(sxHex: 0xF1ECE0) // bone
+    static let textMuted    = Color(sxHex: 0x9AA7B4)
+    static let gold         = Color(sxHex: 0xEBB85E) // accent, earned moments only
 
-    // The signature "ascent" ramp: coral effort warming into gold light. Reads
-    // on both themes, so it stays fixed.
+    /// The signature "ascent" ramp: coral effort warming into gold light.
     static let ascent = [Color(sxHex: 0xE0573F), Color(sxHex: 0xEC8A52),
                          Color(sxHex: 0xF3BC63), Color(sxHex: 0xF8E2A6)]
 
-    static let radius: CGFloat = 12 // harmonized with the START button
+    static let radius: CGFloat = 12
 }
 
-// MARK: - Copy & destination
+// MARK: - Remote-controllable content
 
-/// Copy and destination for the Sextant cross-promo card. Kept as constants so
-/// the UTM attribution tags and the lede cannot silently drift out from under
-/// the analytics or the brand voice.
+/// The card's copy and destination. Decoded from the CDN JSON, and also the
+/// shape of the bundled default. `enabled` lets the card be pulled remotely.
+struct SextantPromoContent: Codable, Equatable {
+    var enabled: Bool
+    var overline: String
+    var title: String
+    var lede: String
+    var url: URL
+}
+
+/// Bundled defaults and endpoints. The static copy constants are the shipped
+/// fallback and the source of the bundled default.
 enum SextantPromo {
+    static let overline = "SEE PAST THE AVERAGES"
     static let title = "Sextant: Run Analysis"
     static let lede = "ChatGPT for your runs, without the slop."
 
-    /// An https universal link: it opens the Sextant app directly once deep
-    /// links are live, and otherwise falls back to the web with the UTM params
-    /// intact for PostHog attribution.
+    /// https so it doubles as a universal link once Sextant's deep links ship,
+    /// with UTM params for PostHog attribution.
     static let url = URL(string:
         "https://sextant.run/?utm_source=oneeighty&utm_medium=cross-promo&utm_campaign=home-card"
     )!
+
+    /// Static JSON the app polls so the card can flip when Sextant goes live.
+    static let configURL = URL(string: "https://sextant.run/promo/oneeighty.json")!
+
+    static var bundledDefault: SextantPromoContent {
+        SextantPromoContent(enabled: true, overline: overline, title: title, lede: lede, url: url)
+    }
+}
+
+/// Holds the card content: starts from the last cached copy (or the bundled
+/// default), then refreshes from the CDN. A failed or slow fetch is a no-op, the
+/// current content stays, so the card is offline-first and never blocks.
+@MainActor
+final class SextantPromoStore: ObservableObject {
+    @Published private(set) var content: SextantPromoContent
+
+    private static let cacheKey = "sextant.promo.content.v1"
+
+    init() {
+        content = Self.cached() ?? SextantPromo.bundledDefault
+    }
+
+    func refresh() async {
+        var request = URLRequest(url: SextantPromo.configURL)
+        request.timeoutInterval = 5
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let remote = try JSONDecoder().decode(SextantPromoContent.self, from: data)
+            guard remote != content else { return }
+            content = remote
+            Self.store(remote)
+        } catch {
+            logger.info("Sextant promo refresh skipped: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static func cached() -> SextantPromoContent? {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        return try? JSONDecoder().decode(SextantPromoContent.self, from: data)
+    }
+
+    private static func store(_ content: SextantPromoContent) {
+        if let data = try? JSONEncoder().encode(content) {
+            UserDefaults.standard.set(data, forKey: cacheKey)
+        }
+    }
 }
 
 // MARK: - The logomark
 
 /// The Sextant mark, small-glyph form: a two-rep interval HR trace settling onto
-/// a goal waypoint. Trace stroked with the ascent gradient; the goal dot is gold
-/// (the earned/target color). Drawn natively so it stays crisp at any size.
-/// Geometry mirrors `logos/logomark-small.svg` (viewBox 0 0 66 40).
+/// a gold goal waypoint. Trace stroked with the ascent gradient. Drawn natively
+/// so it stays crisp at any size. Geometry mirrors `logos/logomark-small.svg`.
 private struct SextantMark: View {
     var body: some View {
         Canvas { ctx, size in
@@ -135,12 +180,11 @@ private struct SextantMark: View {
                 trace,
                 with: .linearGradient(
                     Gradient(colors: Sextant.ascent),
-                    startPoint: p(28, 40), endPoint: p(28, 0) // effort (low) warms up into light
+                    startPoint: p(28, 40), endPoint: p(28, 0)
                 ),
                 style: StrokeStyle(lineWidth: 5 * min(sx, sy), lineCap: .round, lineJoin: .round)
             )
 
-            // Goal waypoint — a sighted dot, gold. Never a star.
             let c = p(59, 12), r = 3 * min(sx, sy)
             ctx.fill(
                 Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
@@ -154,34 +198,40 @@ private struct SextantMark: View {
 
 // MARK: - The card
 
-/// A low-key, always-present card at the top of the main screen that follows the
-/// host theme. Its job is awareness, not conversion: it reads like a sister-app
-/// shelf, not a banner. Tapping opens Sextant.
+/// A low-key, always-present dark, raised card at the top of the main screen.
+/// Awareness, not conversion: a sister-app shelf, not a banner. Content is
+/// remote-controllable; tapping opens Sextant.
 struct SextantCard: View {
     @Environment(\.openURL) private var openURL
-
-    init() {
-        _ = sextantFontsRegistered // register bundled brand fonts before first render
-    }
+    @StateObject private var store = SextantPromoStore()
 
     var body: some View {
+        let _ = sextantFontsRegistered // register bundled brand fonts before first render
+        Group {
+            if store.content.enabled {
+                card(store.content)
+            }
+        }
+        .task { await store.refresh() }
+    }
+
+    private func card(_ content: SextantPromoContent) -> some View {
         Button {
-            logger.info("Sextant card tapped, opening \(SextantPromo.url.absoluteString, privacy: .public)")
-            openURL(SextantPromo.url)
+            logger.info("Sextant card tapped, opening \(content.url.absoluteString, privacy: .public)")
+            openURL(content.url)
         } label: {
             HStack(spacing: 12) {
                 SextantMark()
 
                 VStack(alignment: .leading, spacing: 3) {
-                    // Engraved mono overline: the locked brand tagline.
-                    Text("SEE PAST THE AVERAGES")
+                    Text(content.overline)
                         .font(SextantFont.overline)
                         .tracking(1.4)
                         .foregroundStyle(Sextant.textMuted)
-                    Text(SextantPromo.title)
+                    Text(content.title)
                         .font(SextantFont.title)
                         .foregroundStyle(Sextant.text)
-                    Text(SextantPromo.lede)
+                    Text(content.lede)
                         .font(SextantFont.lede)
                         .foregroundStyle(Sextant.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -194,7 +244,7 @@ struct SextantCard: View {
                     .font(.system(.subheadline, weight: .semibold))
                     .foregroundStyle(Sextant.textMuted)
             }
-            .padding(.horizontal, 16) // SextantSpacing.s4
+            .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: Sextant.radius, style: .continuous)
@@ -204,18 +254,26 @@ struct SextantCard: View {
                             startPoint: .top, endPoint: .bottom
                         )
                     )
-                    .shadow(color: Sextant.shadow.opacity(0.18), radius: 10, x: 0, y: 4)
+                    // Drop shadow lifts the dark card off a light host; on a dark
+                    // host the raised read comes from the lighter surface + bevel.
+                    .shadow(color: .black.opacity(0.28), radius: 14, x: 0, y: 6)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Sextant.radius, style: .continuous)
-                    .stroke(Sextant.border, lineWidth: 1)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Sextant.bevelTop, Sextant.border],
+                            startPoint: .top, endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
             )
             .contentShape(RoundedRectangle(cornerRadius: Sextant.radius, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("sextantCard")
-        .accessibilityLabel("\(SextantPromo.title). \(SextantPromo.lede)")
+        .accessibilityLabel("\(content.title). \(content.lede)")
         .accessibilityHint("Opens sextant.run")
         .accessibilityAddTraits(.isLink)
     }
