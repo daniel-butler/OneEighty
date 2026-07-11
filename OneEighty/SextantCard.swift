@@ -124,33 +124,53 @@ final class SextantPromoStore: ObservableObject {
 
     private static let cacheKey = "sextant.promo.content.v1"
 
-    init() {
-        content = Self.cached() ?? SextantPromo.bundledDefault
+    private let defaults: UserDefaults
+    private let fetch: (URL) async throws -> (Data, URLResponse)
+
+    /// `fetch` and `defaults` are injected so the fetch/decode/cache/fallback
+    /// behavior is unit-testable without hitting the network. Production uses
+    /// URLSession with a short timeout and standard defaults.
+    init(
+        defaults: UserDefaults = .standard,
+        fetch: @escaping (URL) async throws -> (Data, URLResponse) = { url in
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 5
+            return try await URLSession.shared.data(for: request)
+        }
+    ) {
+        self.defaults = defaults
+        self.fetch = fetch
+        content = Self.cached(from: defaults) ?? SextantPromo.bundledDefault
     }
 
     func refresh() async {
-        var request = URLRequest(url: SextantPromo.configURL)
-        request.timeoutInterval = 5
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
-            let remote = try JSONDecoder().decode(SextantPromoContent.self, from: data)
+            let (data, response) = try await fetch(SextantPromo.configURL)
+            guard let remote = Self.parse(data: data, response: response) else { return }
             guard remote != content else { return }
             content = remote
-            Self.store(remote)
+            Self.store(remote, into: defaults)
         } catch {
             logger.info("Sextant promo refresh skipped: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private static func cached() -> SextantPromoContent? {
-        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+    /// A 200 response carrying decodable content yields that content; anything
+    /// else (wrong status, malformed body) yields nil so the caller keeps the
+    /// current content. Pure and synchronous, so it's trivially testable.
+    static func parse(data: Data, response: URLResponse) -> SextantPromoContent? {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
         return try? JSONDecoder().decode(SextantPromoContent.self, from: data)
     }
 
-    private static func store(_ content: SextantPromoContent) {
+    static func cached(from defaults: UserDefaults) -> SextantPromoContent? {
+        guard let data = defaults.data(forKey: cacheKey) else { return nil }
+        return try? JSONDecoder().decode(SextantPromoContent.self, from: data)
+    }
+
+    static func store(_ content: SextantPromoContent, into defaults: UserDefaults) {
         if let data = try? JSONEncoder().encode(content) {
-            UserDefaults.standard.set(data, forKey: cacheKey)
+            defaults.set(data, forKey: cacheKey)
         }
     }
 }
