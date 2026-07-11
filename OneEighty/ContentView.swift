@@ -45,7 +45,7 @@ struct ContentView: View {
             }
 
             // BPM Controls
-            HStack(spacing: 60) {
+            HStack(spacing: 48) {
                 Button {
                     engine.decrementBPM()
                 } label: {
@@ -59,8 +59,6 @@ struct ContentView: View {
                 }
                 .disabled(!engine.canDecrementBPM)
                 .accessibilityIdentifier("decrementBPM")
-
-                Spacer()
 
                 Button {
                     engine.incrementBPM()
@@ -76,7 +74,6 @@ struct ContentView: View {
                 .disabled(!engine.canIncrementBPM)
                 .accessibilityIdentifier("incrementBPM")
             }
-            .padding(.horizontal, 40)
 
             Spacer()
 

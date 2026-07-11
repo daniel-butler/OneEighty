@@ -39,9 +39,11 @@ private let sextantFontsRegistered: Bool = {
 }()
 
 private enum SextantFont {
-    static func overline(_ size: CGFloat) -> Font { .custom("IBMPlexMono-Medium", size: size) }
-    static func semibold(_ size: CGFloat) -> Font { .custom("HankenGrotesk-SemiBold", size: size) }
-    static func body(_ size: CGFloat) -> Font { .custom("HankenGrotesk-Regular", size: size) }
+    // Custom fonts anchored to the iOS text-style ramp (relativeTo:) so they
+    // scale with Dynamic Type instead of being frozen at a point size.
+    static var overline: Font { .custom("IBMPlexMono-Medium", size: 11, relativeTo: .caption2) }
+    static var title: Font { .custom("HankenGrotesk-SemiBold", size: 17, relativeTo: .headline) }
+    static var lede: Font { .custom("HankenGrotesk-Regular", size: 14, relativeTo: .subheadline) }
 }
 
 // MARK: - Brand tokens (scoped, vendored from logos/SextantTokens.swift)
@@ -58,23 +60,36 @@ private extension Color {
             opacity: 1
         )
     }
+
+    /// Theme-adaptive color, resolved per trait at render time (mirrors the
+    /// dark/light token pairs in the brand's SextantTokens.swift).
+    static func sxDynamic(dark: UInt32, light: UInt32) -> Color {
+        Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .light
+                ? UIColor(Color(sxHex: light))
+                : UIColor(Color(sxHex: dark))
+        })
+    }
 }
 
+// Card follows the host theme: Sextant's ink night identity on a dark host,
+// its warm parchment "day" counterpart on a light host. A raised surface,
+// border, and soft shadow keep it separated from the host background either way.
 private enum Sextant {
-    // Ink surfaces / text
-    static let ink        = Color(sxHex: 0x0A131C) // bg
-    static let surface    = Color(sxHex: 0x101E2A) // raised surface
-    static let border     = Color(sxHex: 0x1E3340)
-    static let text       = Color(sxHex: 0xF1ECE0) // bone
-    static let textMuted  = Color(sxHex: 0x9AA7B4)
-    static let textFaint  = Color(sxHex: 0x62727F)
-    static let gold       = Color(sxHex: 0xEBB85E) // accent — earned moments only
+    static let cardTop    = Color.sxDynamic(dark: 0x172A35, light: 0xFFFFFF) // raised
+    static let cardBottom = Color.sxDynamic(dark: 0x0F1B26, light: 0xFBF7EE)
+    static let border     = Color.sxDynamic(dark: 0x27414F, light: 0xE4DCC9)
+    static let text       = Color.sxDynamic(dark: 0xF1ECE0, light: 0x0A131C) // bone / ink
+    static let textMuted  = Color.sxDynamic(dark: 0x9AA7B4, light: 0x4B5A66)
+    static let gold       = Color.sxDynamic(dark: 0xEBB85E, light: 0xB07F2C) // accent — earned moments only
+    static let shadow     = Color.sxDynamic(dark: 0x000000, light: 0x1A2530)
 
-    // The signature "ascent" ramp: coral effort warming into gold light.
+    // The signature "ascent" ramp: coral effort warming into gold light. Reads
+    // on both themes, so it stays fixed.
     static let ascent = [Color(sxHex: 0xE0573F), Color(sxHex: 0xEC8A52),
                          Color(sxHex: 0xF3BC63), Color(sxHex: 0xF8E2A6)]
 
-    static let radius: CGFloat = 16 // SextantRadius.lg
+    static let radius: CGFloat = 12 // harmonized with the START button
 }
 
 // MARK: - Copy & destination
@@ -139,9 +154,9 @@ private struct SextantMark: View {
 
 // MARK: - The card
 
-/// A low-key, always-present dark card at the top of the main screen. Its job is
-/// awareness, not conversion: it reads like a sister-app shelf, not a banner.
-/// Tapping opens Sextant.
+/// A low-key, always-present card at the top of the main screen that follows the
+/// host theme. Its job is awareness, not conversion: it reads like a sister-app
+/// shelf, not a banner. Tapping opens Sextant.
 struct SextantCard: View {
     @Environment(\.openURL) private var openURL
 
@@ -158,26 +173,26 @@ struct SextantCard: View {
                 SextantMark()
 
                 VStack(alignment: .leading, spacing: 3) {
-                    // Engraved mono overline — the locked brand tagline.
+                    // Engraved mono overline: the locked brand tagline.
                     Text("SEE PAST THE AVERAGES")
-                        .font(SextantFont.overline(10))
+                        .font(SextantFont.overline)
                         .tracking(1.4)
-                        .foregroundStyle(Sextant.textFaint)
+                        .foregroundStyle(Sextant.textMuted)
                     Text(SextantPromo.title)
-                        .font(SextantFont.semibold(16))
+                        .font(SextantFont.title)
                         .foregroundStyle(Sextant.text)
                     Text(SextantPromo.lede)
-                        .font(SextantFont.body(13))
+                        .font(SextantFont.lede)
                         .foregroundStyle(Sextant.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 8)
 
-                // Routine nav affordance stays muted — gold is reserved for earned moments.
+                // Routine nav affordance stays muted; gold is reserved for earned moments.
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Sextant.textFaint)
+                    .font(.system(.subheadline, weight: .semibold))
+                    .foregroundStyle(Sextant.textMuted)
             }
             .padding(.horizontal, 16) // SextantSpacing.s4
             .padding(.vertical, 14)
@@ -185,10 +200,11 @@ struct SextantCard: View {
                 RoundedRectangle(cornerRadius: Sextant.radius, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Sextant.surface, Sextant.ink],
+                            colors: [Sextant.cardTop, Sextant.cardBottom],
                             startPoint: .top, endPoint: .bottom
                         )
                     )
+                    .shadow(color: Sextant.shadow.opacity(0.18), radius: 10, x: 0, y: 4)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Sextant.radius, style: .continuous)
