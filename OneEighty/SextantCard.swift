@@ -14,9 +14,35 @@
 //
 
 import SwiftUI
+import CoreText
 import os
 
 private let logger = Logger(subsystem: "app.rekuro.OneEighty", category: "SextantCard")
+
+// MARK: - Brand fonts (bundled, registered at runtime)
+// IBM Plex Mono (wordmark / engraved labels) + Hanken Grotesk (UI text), both
+// SIL OFL. Registered process-wide on first use so no Info.plist entry is
+// needed. Font.custom falls back to the system font if registration ever fails.
+
+private let sextantFontsRegistered: Bool = {
+    for name in ["IBMPlexMono-Medium", "HankenGrotesk-Regular", "HankenGrotesk-SemiBold"] {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else {
+            logger.error("Sextant font missing from bundle: \(name, privacy: .public)")
+            continue
+        }
+        var error: Unmanaged<CFError>?
+        if !CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error) {
+            logger.error("Failed to register Sextant font \(name, privacy: .public)")
+        }
+    }
+    return true
+}()
+
+private enum SextantFont {
+    static func overline(_ size: CGFloat) -> Font { .custom("IBMPlexMono-Medium", size: size) }
+    static func semibold(_ size: CGFloat) -> Font { .custom("HankenGrotesk-SemiBold", size: size) }
+    static func body(_ size: CGFloat) -> Font { .custom("HankenGrotesk-Regular", size: size) }
+}
 
 // MARK: - Brand tokens (scoped, vendored from logos/SextantTokens.swift)
 // Sextant leads dark; these are the dark-theme values so the card always shows
@@ -119,6 +145,10 @@ private struct SextantMark: View {
 struct SextantCard: View {
     @Environment(\.openURL) private var openURL
 
+    init() {
+        _ = sextantFontsRegistered // register bundled brand fonts before first render
+    }
+
     var body: some View {
         Button {
             logger.info("Sextant card tapped, opening \(SextantPromo.url.absoluteString, privacy: .public)")
@@ -127,12 +157,17 @@ struct SextantCard: View {
             HStack(spacing: 12) {
                 SextantMark()
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
+                    // Engraved mono overline — the locked brand tagline.
+                    Text("SEE PAST THE AVERAGES")
+                        .font(SextantFont.overline(10))
+                        .tracking(1.4)
+                        .foregroundStyle(Sextant.textFaint)
                     Text(SextantPromo.title)
-                        .font(.system(size: 16, weight: .semibold)) // Hanken Grotesk SemiBold token
+                        .font(SextantFont.semibold(16))
                         .foregroundStyle(Sextant.text)
                     Text(SextantPromo.lede)
-                        .font(.system(size: 13)) // Hanken Grotesk body token
+                        .font(SextantFont.body(13))
                         .foregroundStyle(Sextant.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
