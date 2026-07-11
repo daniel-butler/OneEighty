@@ -18,6 +18,10 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 40) {
+            SextantCard()
+                .padding(.horizontal, 40)
+                .padding(.top, 8)
+
             Spacer()
 
             // BPM Display
